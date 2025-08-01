@@ -497,6 +497,15 @@ body {
     color: var(--success-color);
 }
 
+.action-btn.qr {
+    color: var(--warning-color);
+}
+
+.action-btn.qr:hover {
+    color: var(--warning-color);
+    background-color: rgba(255, 152, 0, 0.1);
+}
+
 /* مودال‌ها */
 .modal {
     display: none;
@@ -717,6 +726,25 @@ body {
 .github-preview iframe {
     border-radius: var(--border-radius);
     border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* استایل QR کد */
+#qrcode {
+    display: inline-block;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.config-text {
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 15px;
 }
 
 /* حالت روشن */

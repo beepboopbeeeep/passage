@@ -49,7 +49,9 @@ const translations = {
         inactive: "غیرفعال",
         edit: "ویرایش",
         delete: "حذف",
-        copy: "کپی"
+        copy: "کپی",
+        qr: "QR کد",
+        "qr-code": "QR Code کانفیگ"
     },
     en: {
         // منو
@@ -100,7 +102,9 @@ const translations = {
         inactive: "Inactive",
         edit: "Edit",
         delete: "Delete",
-        copy: "Copy"
+        copy: "Copy",
+        qr: "QR Code",
+        "qr-code": "Config QR Code"
     }
 };
 

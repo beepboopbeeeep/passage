@@ -207,6 +207,9 @@ function updateClientsTable(clients) {
                     <button class="action-btn copy" onclick="copyClientConfig('${client.id}')">
                         <svg class="fa-solid fa-copy" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
                     </button>
+                    <button class="action-btn qr" onclick="showQRCode('${client.id}')">
+                        <svg class="fa-solid fa-qrcode" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    </button>
                     <button class="action-btn delete" onclick="deleteClient('${client.id}')">
                         <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
                     </button>
@@ -319,17 +322,102 @@ async function copyClientConfig(clientId) {
         const workerUrl = localStorage.getItem('workerUrl');
         const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
-        if (data) {
-            const config = JSON.stringify(data.config, null, 2);
+        if (data && data.config) {
+            // تبدیل کانفیگ به فرمت استاندارد
+            const configString = generateConfigString(data.config);
             
             // کپی در کلیپ‌بورد
-            navigator.clipboard.writeText(config).then(() => {
+            navigator.clipboard.writeText(configString).then(() => {
                 showNotification('کانفیگ با موفقیت کپی شد', 'success');
+            }).catch(err => {
+                console.error('Copy error:', err);
+                showNotification('خطا در کپی کردن کانفیگ', 'error');
             });
         }
     } catch (error) {
-        console.error('Error copying client config:', error);
+        console.error('Error copying config:', error);
+        showNotification('خطا در دریافت کانفیگ', 'error');
     }
+}
+
+// نمایش QR کد
+async function showQRCode(clientId) {
+    try {
+        const workerUrl = localStorage.getItem('workerUrl');
+        const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
+        
+        if (data && data.config) {
+            const configString = generateConfigString(data.config);
+            
+            // ایجاد مودال QR کد
+            const qrModal = document.createElement('div');
+            qrModal.className = 'modal active';
+            qrModal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>QR Code کانفیگ</h3>
+                        <button class="close-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" style="text-align: center;">
+                        <div id="qrcode" style="margin: 20px auto;"></div>
+                        <div class="config-text" style="word-break: break-all; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-top: 10px;">
+                            ${configString}
+                        </div>
+                        <button class="submit-btn" onclick="copyConfigToClipboard('${configString.replace(/'/g, "\\'")}')">
+                            <i class="fas fa-copy"></i> کپی کانفیگ
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(qrModal);
+            
+            // تولید QR کد
+            new QRCode(document.getElementById("qrcode"), {
+                text: configString,
+                width: 256,
+                height: 256,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            // بستن مودال
+            qrModal.querySelector('.close-modal').addEventListener('click', () => {
+                document.body.removeChild(qrModal);
+            });
+        }
+    } catch (error) {
+        console.error('Error generating QR:', error);
+        showNotification('خطا در تولید QR کد', 'error');
+    }
+}
+
+// تبدیل کانفیگ به فرمت استاندارد
+function generateConfigString(config) {
+    switch (config.v) {
+        case "2": // VLESS/VMESS
+            return `${config.ps}=${config.add}:${config.port}?path=${config.path}&security=${config.tls}&host=${config.host}&type=${config.net}&id=${config.id}#${encodeURIComponent(config.ps)}`;
+        
+        case "trojan": // Trojan
+            return `trojan://${config.password}@${config.sni}:443?path=${config.path}&security=${config.tls}&host=${config.host}&type=${config.type}#${encodeURIComponent(config.ps)}`;
+        
+        case "ss": // Shadowsocks
+            return `ss://${btoa(config.method + ':' + config.password)}@${config.server}:${config.server_port}?plugin=${encodeURIComponent(config.plugin + ';' + JSON.stringify(config['plugin-opts']))}#${encodeURIComponent(config.ps)}`;
+        
+        default:
+            return JSON.stringify(config, null, 2);
+    }
+}
+
+// کپی مستقیم کانفیگ
+function copyConfigToClipboard(configString) {
+    navigator.clipboard.writeText(configString).then(() => {
+        showNotification('کانفیگ با موفقیت کپی شد', 'success');
+    }).catch(err => {
+        console.error('Copy error:', err);
+        showNotification('خطا در کپی کردن کانفیگ', 'error');
+    });
 }
 
 // حذف کاربر
