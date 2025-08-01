@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passage Dashboard</title>
+    
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- استایل‌ها -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- منوی کناری -->
+    <div class="sidebar" id="sidebar">
+        <div class="logo">
+            <i class="fas fa-route"></i>
+            <span>Passage</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="active">
+                <a href="#" data-tab="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span data-i18n="dashboard">داشبورد</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" data-tab="clients">
+                    <i class="fas fa-users"></i>
+                    <span data-i18n="clients">کاربران</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" data-tab="inbounds">
+                    <i class="fas fa-server"></i>
+                    <span data-i18n="inbounds">اینباندها</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" data-tab="settings">
+                    <i class="fas fa-cog"></i>
+                    <span data-i18n="settings">تنظیمات</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" data-tab="about">
+                    <i class="fas fa-info-circle"></i>
+                    <span data-i18n="about">درباره ما</span>
+                </a>
+            </li>
+        </ul>
+        <div class="user-info">
+            <img src="https://ui-avatars.com/api/?name=admin&background=C7A46C&color=fff" alt="User">
+            <div class="user-details">
+                <div class="username">admin</div>
+                <div class="role">مدیر سیستم</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- محتوای اصلی -->
+    <div class="main-content">
+        <!-- نوار بالایی -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="menu-toggle" id="menuToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h2 class="page-title" id="pageTitle" data-i18n="dashboard">داشبورد</h2>
+            </div>
+            <div class="topbar-right">
+                <!-- انتخابگر زبان -->
+                <div class="language-switcher">
+                    <select id="dashboardLanguage">
+                        <option value="fa">فارسی</option>
+                        <option value="en">English</option>
+                    </select>
+                    <i class="fas fa-globe"></i>
+                </div>
+                
+                <button class="theme-toggle" id="themeToggle">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button class="logout-btn" id="logoutBtn">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- تب‌ها -->
+        <div class="tabs-container">
+            <!-- تب داشبورد -->
+            <div class="tab-content active" id="dashboard-tab">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="totalClients">0</div>
+                            <div class="stat-label" data-i18n="total-clients">کل کاربران</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="activeInbounds">0</div>
+                            <div class="stat-label" data-i18n="active-inbounds">اینباندهای فعال</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-plug"></i>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="activeConnections">0</div>
+                            <div class="stat-label" data-i18n="active-connections">اتصالات فعال</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- روزهای فعال‌سازی -->
+                <div class="activation-info">
+                    <div class="activation-card">
+                        <div class="activation-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="activation-details">
+                            <div class="activation-label" data-i18n="activation-days">روزهای فعال‌سازی</div>
+                            <div class="activation-value" id="activationDays">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- تب کاربران -->
+            <div class="tab-content" id="clients-tab">
+                <div class="table-header">
+                    <h3 data-i18n="clients">کاربران</h3>
+                    <button class="add-btn" id="addClientBtn">
+                        <i class="fas fa-plus"></i>
+                        <span data-i18n="add-client">افزودن کاربر</span>
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="username">نام کاربری</th>
+                                <th data-i18n="protocol">پروتکل</th>
+                                <th data-i18n="expiry-date">تاریخ انقضا</th>
+                                <th data-i18n="status">وضعیت</th>
+                                <th data-i18n="actions">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientsTableBody">
+                            <!-- داده‌ها از طریق جاوا اسکریپت پر می‌شوند -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- تب اینباندها -->
+            <div class="tab-content" id="inbounds-tab">
+                <div class="table-header">
+                    <h3 data-i18n="inbounds">اینباندها</h3>
+                    <button class="add-btn" id="addInboundBtn">
+                        <i class="fas fa-plus"></i>
+                        <span data-i18n="add-inbound">افزودن اینباند</span>
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="name">نام</th>
+                                <th data-i18n="protocol">پروتکل</th>
+                                <th data-i18n="port">پورت</th>
+                                <th data-i18n="network">شبکه</th>
+                                <th data-i18n="security">امنیت</th>
+                                <th data-i18n="status">وضعیت</th>
+                                <th data-i18n="actions">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inboundsTableBody">
+                            <!-- داده‌ها از طریق جاوا اسکریپت پر می‌شوند -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- تب تنظیمات -->
+            <div class="tab-content" id="settings-tab">
+                <div class="settings-container">
+                    <div class="settings-form">
+                        <h3 data-i18n="settings">تنظیمات سیستم</h3>
+                        <div class="form-group">
+                            <label data-i18n="current-username">نام کاربری فعلی</label>
+                            <input type="text" id="currentUsername" value="admin" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="new-password">رمز عبور جدید</label>
+                            <input type="password" id="newPassword" placeholder="رمز عبور جدید">
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="confirm-password">تکرار رمز عبور</label>
+                            <input type="password" id="confirmPassword" placeholder="تکرار رمز عبور">
+                        </div>
+                        <button class="save-btn" id="saveSettingsBtn">
+                            <i class="fas fa-save"></i>
+                            <span data-i18n="save-changes">ذخیره تغییرات</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- تب درباره ما -->
+            <div class="tab-content" id="about-tab">
+                <div class="about-container">
+                    <div class="about-content">
+                        <h3 data-i18n="about-passage">درباره Passage</h3>
+                        <p data-i18n="about-desc">Passage یک پنل مدیریت قدرتمند برای کانفیگ‌های V2Ray روی Cloudflare Workers است.</p>
+                        <p data-i18n="developed-by">توسعه یافته توسط تیم Najidevs</p>
+                        <div class="github-preview">
+                            <h4 data-i18n="github-projects">پروژه‌های ما در گیت‌هاب:</h4>
+                            <iframe 
+                                src="https://github.com/najidevs/" 
+                                width="100%" 
+                                height="400" 
+                                frameborder="0"
+                                loading="lazy"
+                                onload="this.style.opacity='1'"
+                                style="opacity:0; transition: opacity 0.3s;">
+                            </iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال افزودن کاربر -->
+    <div class="modal" id="addClientModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 data-i18n="add-client">افزودن کاربر جدید</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addClientForm">
+                    <div class="form-group">
+                        <label data-i18n="username">نام کاربری</label>
+                        <input type="text" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="protocol">پروتکل</label>
+                        <select name="protocol" required>
+                            <option value="vless">VLESS</option>
+                            <option value="vmess">VMESS</option>
+                            <option value="trojan">Trojan</option>
+                            <option value="shadowsocks">Shadowsocks</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="expiry-date">تاریخ انقضا</label>
+                        <input type="date" name="expiry_date">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="status">وضعیت</label>
+                        <select name="status">
+                            <option value="active">فعال</option>
+                            <option value="inactive">غیرفعال</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-plus"></i>
+                        <span data-i18n="create-user">ایجاد کاربر</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- مودال افزودن اینباند -->
+    <div class="modal" id="addInboundModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 data-i18n="add-inbound">افزودن اینباند جدید</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addInboundForm">
+                    <div class="form-group">
+                        <label data-i18n="name">نام اینباند</label>
+                        <input type="text" name="inbound_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="protocol">پروتکل</label>
+                        <select name="protocol" required>
+                            <option value="vless">VLESS</option>
+                            <option value="vmess">VMESS</option>
+                            <option value="trojan">Trojan</option>
+                            <option value="shadowsocks">Shadowsocks</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="port">پورت</label>
+                        <select name="port" required>
+                            <option value="443">443 (TLS)</option>
+                            <option value="2053">2053 (TLS)</option>
+                            <option value="2096">2096 (TLS)</option>
+                            <option value="8443">8443 (TLS)</option>
+                            <option value="80">80 (Non-TLS)</option>
+                            <option value="8080">8080 (Non-TLS)</option>
+                            <option value="8880">8880 (Non-TLS)</option>
+                            <option value="2052">2052 (Non-TLS)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="network">شبکه</label>
+                        <select name="network" required>
+                            <option value="ws">WebSocket</option>
+                            <option value="grpc">gRPC</option>
+                            <option value="tcp">TCP</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="security">امنیت</label>
+                        <select name="security">
+                            <option value="tls">TLS</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-plus"></i>
+                        <span data-i18n="create-inbound">ایجاد اینباند</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- فایل‌های جاوا اسکریپت -->
+    <script src="js/i18n.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

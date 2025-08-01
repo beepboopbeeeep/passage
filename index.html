@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passage Login</title>
+    
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- استایل‌ها -->
+    <style>
+        /* متغیرهای رنگی */
+        :root {
+            --primary-color: #C7A46C;
+            --primary-dark: #B0905F;
+            --primary-light: #D4B887;
+            --bg-color: #0F0F0F;
+            --surface-color: #1A1A1A;
+            --surface-light: #252525;
+            --text-color: #E0E0E0;
+            --text-secondary: #A0A0A0;
+            --border-radius: 12px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* تنظیمات عمومی */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* دکوراسیون پس‌زمینه */
+        .bg-decoration {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .bg-circle {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            opacity: 0.4;
+        }
+
+        .bg-circle-1 {
+            width: 400px;
+            height: 400px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            top: -200px;
+            right: -200px;
+        }
+
+        .bg-circle-2 {
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(135deg, #4F46E5, #7C3AED);
+            bottom: -150px;
+            left: -150px;
+        }
+
+        .bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(199, 164, 108, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(124, 58, 237, 0.1) 0%, transparent 50%);
+            background-size: 100% 100%;
+        }
+
+        /* کانتینر اصلی */
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        /* فرم ورود */
+        .login-form {
+            background: linear-gradient(145deg, var(--surface-color), var(--surface-light));
+            backdrop-filter: blur(20px);
+            border-radius: var(--border-radius);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            animation: slideIn 0.6s ease-out;
+            margin: auto;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* هدر فرم */
+        .form-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border-radius: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 25px rgba(199, 164, 108, 0.3);
+        }
+
+        .logo i {
+            font-size: 32px;
+            color: #FFF;
+        }
+
+        .form-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* پیام خطا */
+        .error-message {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            color: #F44336;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            text-align: center;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* گروه‌های فرم */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            z-index: 2;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 15px 15px 15px 45px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-color);
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(199, 164, 108, 0.1);
+        }
+
+        /* انتخابگر زبان */
+        .language-selector {
+            position: relative;
+        }
+
+        .language-selector select {
+            width: 100%;
+            padding: 15px 45px 15px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            appearance: none;
+            transition: var(--transition);
+        }
+
+        .language-selector select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .language-selector i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        /* دکمه ورود */
+        .btn-login {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border: none;
+            border-radius: 10px;
+            color: #FFF;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: var(--transition);
+            box-shadow: 0 10px 25px rgba(199, 164, 108, 0.3);
+            margin-top: 10px;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(199, 164, 108, 0.4);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        /* فوتر فرم */
+        .form-footer {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* نوتیفیکیشن‌ها */
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(199, 164, 108, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            transition: opacity 0.3s ease;
+        }
+        
+        .notification-error {
+            background: rgba(244, 67, 54, 0.9);
+        }
+        
+        .notification-success {
+            background: rgba(76, 175, 80, 0.9);
+        }
+
+        /* حالت روشن */
+        body.light-mode {
+            --bg-color: #F5F5F5;
+            --surface-color: #FFFFFF;
+            --surface-light: #FAFAFA;
+            --text-color: #333333;
+            --text-secondary: #666666;
+        }
+
+        body.light-mode .login-form {
+            background: #FFFFFF;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        body.light-mode .form-control,
+        body.light-mode .language-selector select {
+            background: rgba(0, 0, 0, 0.03);
+            border-color: #E0E0E0;
+            color: #333333;
+        }
+
+        /* ریسپانسیو */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px 15px;
+            }
+            
+            .login-form {
+                padding: 30px 20px;
+            }
+            
+            .form-header h1 {
+                font-size: 24px;
+            }
+        }
+        
+        @media (max-height: 600px) {
+            .container {
+                padding: 15px;
+                min-height: auto;
+            }
+            
+            .login-form {
+                padding: 25px 15px;
+                margin: 10px 0;
+            }
+            
+            .form-header {
+                margin-bottom: 20px;
+            }
+            
+            .form-group {
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- دکوراسیون پس‌زمینه -->
+    <div class="bg-decoration">
+        <div class="bg-pattern"></div>
+        <div class="bg-circle bg-circle-1"></div>
+        <div class="bg-circle bg-circle-2"></div>
+    </div>
+
+    <!-- کانتینر اصلی -->
+    <div class="container">
+        <form class="login-form" id="loginForm">
+            <!-- هدر فرم -->
+            <div class="form-header">
+                <div class="logo">
+                    <i class="fas fa-route"></i>
+                </div>
+                <h1 data-i18n="welcome">به Passage خوش آمدید</h1>
+                <p data-i18n="login-desc">برای ورود به پنل مدیریت اطلاعات خود را وارد کنید</p>
+            </div>
+
+            <!-- پیام خطا -->
+            <div class="error-message" id="errorMessage"></div>
+
+            <!-- آدرس ورکر -->
+            <div class="form-group">
+                <label for="workerUrl" data-i18n="worker-url">آدرس ورکر</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-link"></i>
+                    <input type="url" id="workerUrl" class="form-control" 
+                           placeholder="https://your-worker.workers.dev" required>
+                </div>
+            </div>
+
+            <!-- نام کاربری -->
+            <div class="form-group">
+                <label for="username" data-i18n="username">نام کاربری</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" class="form-control" 
+                           placeholder="admin" required>
+                </div>
+            </div>
+
+            <!-- رمز عبور -->
+            <div class="form-group">
+                <label for="password" data-i18n="password">رمز عبور</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" class="form-control" 
+                           placeholder="••••••••" required>
+                    <button type="button" class="toggle-password" 
+                            style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-secondary); cursor: pointer;">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- انتخاب زبان -->
+            <div class="form-group">
+                <label for="language" data-i18n="language">زبان</label>
+                <div class="language-selector">
+                    <select id="language" class="form-control">
+                        <option value="fa">فارسی</option>
+                        <option value="en">English</option>
+                    </select>
+                    <i class="fas fa-globe"></i>
+                </div>
+            </div>
+
+            <!-- دکمه ورود -->
+            <button type="submit" class="btn-login" id="loginBtn">
+                <span data-i18n="login">ورود</span>
+                <i class="fas fa-arrow-left"></i>
+            </button>
+
+            <!-- فوتر فرم -->
+            <div class="form-footer">
+                <p data-i18n="default-creds">اطلاعات پیش‌فرض: admin / admin</p>
+            </div>
+        </form>
+    </div>
+
+    <!-- اسکریپت‌ها -->
+    <script>
+        // سیستم چندزبانه
+        const translations = {
+            fa: {
+                welcome: "به Passage خوش آمدید",
+                "login-desc": "برای ورود به پنل مدیریت اطلاعات خود را وارد کنید",
+                "worker-url": "آدرس ورکر",
+                username: "نام کاربری",
+                password: "رمز عبور",
+                language: "زبان",
+                login: "ورود",
+                "default-creds": "اطلاعات پیش‌فرض: admin / admin",
+                "error-invalid-creds": "نام کاربری یا رمز عبور اشتباه است",
+                "error-network": "خطا در ارتباط با سرور",
+                "error-unknown": "خطای ناشناخته"
+            },
+            en: {
+                welcome: "Welcome to Passage",
+                "login-desc": "Enter your credentials to access the management panel",
+                "worker-url": "Worker URL",
+                username: "Username",
+                password: "Password",
+                language: "Language",
+                login: "Login",
+                "default-creds": "Default credentials: admin / admin",
+                "error-invalid-creds": "Invalid username or password",
+                "error-network": "Network error",
+                "error-unknown": "Unknown error"
+            }
+        };
+
+        // تابع تغییر زبان
+        function setLanguage(lang) {
+            localStorage.setItem('language', lang);
+            document.documentElement.lang = lang;
+            document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
+            
+            // به‌روزرسانی متن‌ها
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                if (translations[lang][key]) {
+                    element.textContent = translations[lang][key];
+                }
+            });
+            
+            // به‌روزرسانی انتخابگر زبان
+            document.getElementById('language').value = lang;
+        }
+
+        // بارگذاری زبان ذخیره شده
+        function initLanguage() {
+            const savedLang = localStorage.getItem('language') || 'fa';
+            setLanguage(savedLang);
+        }
+
+        // تابع نمایش نوتیفیکیشن
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.innerHTML = `
+                <i class="fas fa-${type === 'error' ? 'exclamation-circle' : type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+                <span>${message}</span>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        // تابع ورود
+        async function login(workerUrl, username, password) {
+            const loginBtn = document.getElementById('loginBtn');
+            const originalText = loginBtn.innerHTML;
+            
+            try {
+                // نمایش لودینگ
+                loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال ورود...';
+                loginBtn.disabled = true;
+                
+                // ارسال درخواست به API
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(`${workerUrl}/api/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        workerUrl,
+                        username,
+                        password
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // ذخیره اطلاعات ورود
+                    localStorage.setItem('workerUrl', workerUrl);
+                    localStorage.setItem('username', username);
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('activationDate', new Date().toISOString());
+                    
+                    showNotification('ورود با موفقیت انجام شد', 'success');
+                    
+                    // هدایت به داشبورد
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+                } else {
+                    showError('error-invalid-creds');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                if (error.name === 'AbortError') {
+                    showError('error-network');
+                } else {
+                    showError('error-unknown');
+                }
+            } finally {
+                // بازگرداندن دکمه به حالت اولیه
+                loginBtn.innerHTML = originalText;
+                loginBtn.disabled = false;
+            }
+        }
+
+        // تابع نمایش خطا
+        function showError(messageKey) {
+            const errorMessage = document.getElementById('errorMessage');
+            const lang = localStorage.getItem('language') || 'fa';
+            errorMessage.textContent = translations[lang][messageKey];
+            errorMessage.classList.add('show');
+            
+            // مخفی کردن خطا بعد از 5 ثانیه
+            setTimeout(() => {
+                errorMessage.classList.remove('show');
+            }, 5000);
+        }
+
+        // رویداد تغییر زبان
+        document.addEventListener('DOMContentLoaded', function() {
+            const languageSelector = document.getElementById('language');
+            languageSelector.addEventListener('change', function() {
+                setLanguage(this.value);
+            });
+            
+            initLanguage();
+            
+            // تغییر حالت نمایش رمز عبور
+            const togglePassword = document.querySelector('.toggle-password');
+            const passwordInput = document.getElementById('password');
+            
+            togglePassword.addEventListener('click', function() {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                
+                const icon = this.querySelector('i');
+                icon.classList.toggle('fa-eye');
+                icon.classList.toggle('fa-eye-slash');
+            });
+            
+            // ارسال فرم ورود
+            const loginForm = document.getElementById('loginForm');
+            loginForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const workerUrl = document.getElementById('workerUrl').value.trim();
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value;
+                
+                // اعتبارسنجی ورودی‌ها
+                if (!workerUrl || !username || !password) {
+                    showError('error-invalid-creds');
+                    return;
+                }
+                
+                // فراخوانی تابع ورود
+                login(workerUrl, username, password);
+            });
+        });
+    </script>
+</body>
+</html>
