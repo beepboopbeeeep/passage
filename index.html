@@ -431,7 +431,8 @@
                 "default-creds": "اطلاعات پیش‌فرض: admin / admin",
                 "error-invalid-creds": "نام کاربری یا رمز عبور اشتباه است",
                 "error-network": "خطا در ارتباط با سرور",
-                "error-unknown": "خطای ناشناخته"
+                "error-unknown": "خطای ناشناخته",
+                "error-worker-url": "آدرس ورکر معتبر نیست"
             },
             en: {
                 welcome: "Welcome to Passage",
@@ -444,7 +445,8 @@
                 "default-creds": "Default credentials: admin / admin",
                 "error-invalid-creds": "Invalid username or password",
                 "error-network": "Network error",
-                "error-unknown": "Unknown error"
+                "error-unknown": "Unknown error",
+                "error-worker-url": "Invalid worker URL"
             }
         };
         // تابع تغییر زبان
@@ -501,7 +503,10 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
                 
-                const response = await fetch(`${workerUrl}/api/login`, {
+                // Ensure the worker URL doesn't end with a slash
+                const cleanWorkerUrl = workerUrl.endsWith('/') ? workerUrl.slice(0, -1) : workerUrl;
+                
+                const response = await fetch(`${cleanWorkerUrl}/api/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -519,7 +524,7 @@
                 
                 if (response.ok && data.success) {
                     // ذخیره اطلاعات ورود
-                    localStorage.setItem('workerUrl', workerUrl);
+                    localStorage.setItem('workerUrl', cleanWorkerUrl);
                     localStorage.setItem('username', username);
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('activationDate', new Date().toISOString());
@@ -531,7 +536,7 @@
                         window.location.href = 'dashboard.html';
                     }, 1500);
                 } else {
-                    showError('error-invalid-creds');
+                    showError(data.error === 'Invalid credentials' ? 'error-invalid-creds' : 'error-unknown');
                 }
             } catch (error) {
                 console.error('Login error:', error);
@@ -550,7 +555,7 @@
         function showError(messageKey) {
             const errorMessage = document.getElementById('errorMessage');
             const lang = localStorage.getItem('language') || 'fa';
-            errorMessage.textContent = translations[lang][messageKey];
+            errorMessage.textContent = translations[lang][messageKey] || translations[lang]['error-unknown'];
             errorMessage.classList.add('show');
             
             // مخفی کردن خطا بعد از 5 ثانیه
@@ -592,6 +597,14 @@
                 // اعتبارسنجی ورودی‌ها
                 if (!workerUrl || !username || !password) {
                     showError('error-invalid-creds');
+                    return;
+                }
+                
+                // Check if workerUrl is a valid URL
+                try {
+                    new URL(workerUrl);
+                } catch (e) {
+                    showError('error-worker-url');
                     return;
                 }
                 
