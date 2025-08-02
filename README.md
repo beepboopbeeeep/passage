@@ -1,121 +1,43 @@
-# Passage - پنل مدیریت V2Ray بر روی Cloudflare Workers
+# Passage - V2Ray Management Panel
 
-Passage یک پنل مدیریت قدرتمند برای کانفیگ‌های V2Ray است که بر روی Cloudflare Workers اجرا می‌شود.
+Passage is a powerful management panel for V2Ray configurations running on Cloudflare Workers.
 
-## ویژگی‌ها
+## Features
 
-- مدیریت کاربران (ایجاد، حذف، ویرایش)
-- پشتیبانی از پروتکل‌های مختلف (VLESS, VMess, Trojan, Shadowsocks)
-- تولید خودکار کانفیگ‌ها برای هر کاربر
-- ایجاد لینک اشتراک (Subscription) قابل استفاده در کلاینت‌های مختلف
-- رابط کاربری فارسی و انگلیسی
-- پشتیبانی از تم تیره و روشن
-- امنیت بالا با استفاده از توکن‌های JWT
-- ذخیره‌سازی داده‌ها در KV Storage کلادفلر
-- پروکسی کانفیگ‌ها برای پنهان کردن سرورهای اصلی
+- User management (VLESS, VMESS, Trojan, Shadowsocks)
+- Inbound management
+- Traffic statistics
+- Multi-language support (English/Persian)
+- Dark/Light theme
+- Responsive design
 
-## پیش‌نیازها
+## Installation
 
-- حساب Cloudflare
-- دامنه معتبر
-- دسترسی به Cloudflare Workers و KV Storage
+1. Deploy the `worker.js` file to Cloudflare Workers
+2. Set up a KV namespace and bind it as `PASSAGE_KV` in your worker
+3. Deploy the frontend files (index.html, dashboard.html, css/, js/) to any static hosting
 
-## نصب و راه‌اندازی
+## Usage
 
-1. کلون کردن مخزن:
-```bash
-git clone https://github.com/yourusername/passage.git
-```
+1. Open the login page (index.html)
+2. Enter your Cloudflare Worker URL
+3. Use default credentials: admin / admin
+4. Change password after first login
 
-2. نصب وابستگی‌ها:
-```bash
-npm install
-```
+## Default Credentials
 
-3. پیکربندی متغیرهای محیطی:
-   - `AUTH`: اطلاعات احراز هویت ادمین
-   - `USERS`: داده‌های کاربران
-   - `INBOUNDS`: تنظیمات اینباندها
-   - `TOKENS`: توکن‌های احراز هویت
-   - `PROXY_CONFIGS`: کانفیگ‌های پروکسی
+- Username: admin
+- Password: admin
 
-4. تنظیم اطلاعات اولیه ادمین:
-```bash
-wrangler kv:key put --binding=AUTH "admin" '{"username":"admin","password":"admin"}'
-```
+Make sure to change these after first login for security reasons.
 
-5. دیپلوی روی Cloudflare Workers:
-```bash
-wrangler publish
-```
+## Technologies Used
 
-## استفاده
+- HTML5/CSS3
+- Vanilla JavaScript (no frameworks)
+- Cloudflare Workers
+- Cloudflare KV
 
-1. پس از دیپلوی، به آدرس داشبورد مراجعه کنید
-2. با نام کاربری و رمز عبور پیش‌فرض وارد شوید (admin/admin)
-3. کاربران جدید ایجاد کنید
-4. اینباندها را پیکربندی کنید
-5. از لینک‌های اشتراک برای کلاینت‌های خود استفاده کنید
+## License
 
-## پروکسی کانفیگ‌ها
-
-Passage اکنون از پروکسی کانفیگ‌ها پشتیبانی می‌کند که به شما امکان می‌دهد:
-- سرورهای اصلی خود را پنهان کنید
-- ترافیک را از طریق Worker هدایت کنید
-- امنیت اضافی فراهم کنید
-
-برای استفاده از این قابلیت:
-1. کانفیگ خود را در Worker ذخیره کنید
-2. از مسیر `/proxy/host:port/path` برای دسترسی به سرور اصلی استفاده کنید
-
-مثال:
-```
-vless://uuid@your-worker.workers.dev:443?path=/proxy/original-domain.com:443/config
-```
-
-## تغییر رمز عبور ادمین
-
-رمز عبور ادمین از طریق پنل قابل تغییر است:
-1. پس از ورود به پنل، به تب "تنظیمات" بروید
-2. رمز عبور جدید را وارد کنید
-3. روی "ذخیره تغییرات" کلیک کنید
-
-رمز عبور جدید در KV Storage ذخیره خواهد شد.
-
-## امنیت
-
-- توکن‌های احراز هویت با زمان انقضا
-- ذخیره‌سازی امن داده‌ها در KV Storage
-- CORS تنظیم شده برای جلوگیری از دسترسی غیرمجاز
-
-## توسعه
-
-برای توسعه و تست محلی:
-
-```bash
-wrangler dev
-```
-
-### تست‌ها
-
-برای اجرای تست‌های خودکار:
-
-```bash
-npm test
-```
-
-### مستندات توسعه
-
-برای اطلاعات بیشتر درباره توسعه پروژه، فایل [DEVELOPMENT.md](docs/DEVELOPMENT.md) را مطالعه کنید.
-
-## مشارکت
-
-1. Fork کنید
-2. یک Branch جدید ایجاد کنید (`git checkout -b feature/AmazingFeature`)
-3. تغییرات خود را Commit کنید (`git commit -m 'Add some AmazingFeature'`)
-4. به Branch اصلی Push کنید (`git push origin feature/AmazingFeature`)
-5. یک Pull Request ایجاد کنید
-
-## مجوز
-
-این پروژه تحت مجوز MIT منتشر شده است. برای اطلاعات بیشتر به فایل [LICENSE](LICENSE) مراجعه کنید.
+MIT

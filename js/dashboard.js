@@ -1,4 +1,3 @@
-// js/dashboard.js
 document.addEventListener('DOMContentLoaded', function() {
     // دریافت اطلاعات از API
     fetchDashboardData();
@@ -67,7 +66,6 @@ document.addEventListener('DOMContentLoaded', function() {
     logoutBtn.addEventListener('click', function() {
         if (confirm(translations[localStorage.getItem('language') || 'fa'].logout + '?')) {
             localStorage.clear();
-            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
             window.location.href = 'index.html';
         }
     });
@@ -127,7 +125,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
-
 // به‌روزرسانی روزهای فعال‌سازی
 function updateActivationDays() {
     const activationDate = localStorage.getItem('activationDate');
@@ -141,12 +138,11 @@ function updateActivationDays() {
         document.getElementById('activationDays').textContent = '0';
     }
 }
-
 // دریافت داده‌های داشبورد
 async function fetchDashboardData() {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const token = window.PASSAGE_TOKEN;
+        const token = localStorage.getItem('token');
         
         if (!workerUrl || !token) {
             window.location.href = 'index.html';
@@ -160,17 +156,15 @@ async function fetchDashboardData() {
             updateDashboardStats(response);
         }
     } catch (error) {
-        handleApiError(error, 'دریافت آمار داشبورد');
+        console.error('Error fetching dashboard data:', error);
     }
 }
-
 // به‌روزرسانی آمار داشبورد
 function updateDashboardStats(data) {
     document.getElementById('totalClients').textContent = data.totalClients || 0;
     document.getElementById('activeInbounds').textContent = data.activeInbounds || 0;
     document.getElementById('activeConnections').textContent = data.activeConnections || 0;
 }
-
 // دریافت لیست کاربران
 async function fetchClients() {
     try {
@@ -181,63 +175,42 @@ async function fetchClients() {
             updateClientsTable(data.users);
         }
     } catch (error) {
-        handleApiError(error, 'دریافت لیست کاربران');
+        console.error('Error fetching clients:', error);
     }
 }
-
 // به‌روزرسانی جدول کاربران
 function updateClientsTable(clients) {
-  const tbody = document.getElementById('clientsTableBody');
-  tbody.innerHTML = '';
-  
-  if (!clients || clients.length === 0) {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td colspan="5" style="text-align: center;">هیچ کاربری یافت نشد</td>
-    `;
-    tbody.appendChild(row);
-    return;
-  }
-  
-  clients.forEach(client => {
-    // بررسی وضعیت واقعی کاربر
-    let displayStatus = client.status;
-    if (client.status === 'active' && client.expiryDate) {
-      const now = new Date();
-      const expiryDate = new Date(client.expiryDate);
-      if (now > expiryDate) {
-        displayStatus = 'expired';
-      }
-    }
+    const tbody = document.getElementById('clientsTableBody');
+    tbody.innerHTML = '';
     
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${client.username || '-'}</td>
-      <td>${client.protocol || '-'}</td>
-      <td>${client.expiryDate || 'نامحدود'}</td>
-      <td>
-        <span class="status-badge status-${displayStatus || 'inactive'}">
-          ${displayStatus === 'active' ? 'فعال' : displayStatus === 'expired' ? 'منقضی شده' : 'غیرفعال'}
-        </span>
-      </td>
-      <td>
-        <div class="action-buttons">
-          <button class="action-btn copy" onclick="copyClientConfig('${client.id}')" title="کپی کانفیگ">
-            <i class="fas fa-copy"></i>
-          </button>
-          <button class="action-btn qr" onclick="showQRCode('${client.id}')" title="نمایش QR کد">
-            <i class="fas fa-qrcode"></i>
-          </button>
-          <button class="action-btn delete" onclick="deleteClient('${client.id}')" title="حذف کاربر">
-            <i class="fas fa-trash"></i>
-          </button>
-        </div>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
+    clients.forEach(client => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${client.username}</td>
+            <td>${client.protocol}</td>
+            <td>${client.expiryDate || 'نامحدود'}</td>
+            <td>
+                <span class="status-badge status-${client.status}">
+                    ${client.status === 'active' ? 'فعال' : 'غیرفعال'}
+                </span>
+            </td>
+            <td>
+                <div class="action-buttons">
+                    <button class="action-btn edit" onclick="editClient('${client.id}')">
+                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    </button>
+                    <button class="action-btn copy" onclick="copyClientConfig('${client.id}')">
+                        <svg class="fa-solid fa-copy" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    </button>
+                    <button class="action-btn delete" onclick="deleteClient('${client.id}')">
+                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
 }
-
 // دریافت لیست اینباندها
 async function fetchInbounds() {
     try {
@@ -248,41 +221,34 @@ async function fetchInbounds() {
             updateInboundsTable(data.inbounds);
         }
     } catch (error) {
-        handleApiError(error, 'دریافت لیست اینباندها');
+        console.error('Error fetching inbounds:', error);
     }
 }
-
 // به‌روزرسانی جدول اینباندها
 function updateInboundsTable(inbounds) {
     const tbody = document.getElementById('inboundsTableBody');
     tbody.innerHTML = '';
     
-    if (!inbounds || inbounds.length === 0) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td colspan="7" style="text-align: center;">هیچ اینباندی یافت نشد</td>
-        `;
-        tbody.appendChild(row);
-        return;
-    }
-    
     inbounds.forEach(inbound => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${inbound.inbound_name || '-'}</td>
-            <td>${inbound.protocol || '-'}</td>
-            <td>${inbound.port || '-'}</td>
-            <td>${inbound.network || '-'}</td>
-            <td>${inbound.security || '-'}</td>
+            <td>${inbound.inbound_name}</td>
+            <td>${inbound.protocol}</td>
+            <td>${inbound.port}</td>
+            <td>${inbound.network}</td>
+            <td>${inbound.security}</td>
             <td>
-                <span class="status-badge status-${inbound.status === 'فعال' ? 'active' : 'inactive'}">
-                    ${inbound.status || 'نامشخص'}
+                <span class="status-badge status-${inbound.status}">
+                    ${inbound.status === 'active' ? 'فعال' : 'غیرفعال'}
                 </span>
             </td>
             <td>
                 <div class="action-buttons">
-                    <button class="action-btn delete" onclick="deleteInbound('${inbound.id}')" title="حذف اینباند">
-                        <i class="fas fa-trash"></i>
+                    <button class="action-btn edit" onclick="editInbound('${inbound.id}')">
+                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    </button>
+                    <button class="action-btn delete" onclick="deleteInbound('${inbound.id}')">
+                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
                     </button>
                 </div>
             </td>
@@ -290,7 +256,6 @@ function updateInboundsTable(inbounds) {
         tbody.appendChild(row);
     });
 }
-
 // ایجاد کاربر جدید
 async function createClient(clientData) {
     try {
@@ -304,10 +269,9 @@ async function createClient(clientData) {
         fetchDashboardData();
         showNotification('کاربر با موفقیت ایجاد شد', 'success');
     } catch (error) {
-        handleApiError(error, 'ایجاد کاربر جدید');
+        console.error('Error creating client:', error);
     }
 }
-
 // ایجاد اینباند جدید
 async function createInbound(inboundData) {
     try {
@@ -321,10 +285,9 @@ async function createInbound(inboundData) {
         fetchDashboardData();
         showNotification('اینباند با موفقیت ایجاد شد', 'success');
     } catch (error) {
-        handleApiError(error, 'ایجاد اینباند جدید');
+        console.error('Error creating inbound:', error);
     }
 }
-
 // به‌روزرسانی تنظیمات
 async function updateSettings(settingsData) {
     try {
@@ -336,175 +299,27 @@ async function updateSettings(settingsData) {
         
         showNotification('تنظیمات با موفقیت ذخیره شد', 'success');
     } catch (error) {
-        handleApiError(error, 'به‌روزرسانی تنظیمات');
+        console.error('Error updating settings:', error);
     }
 }
-
 // کپی کانفیگ کاربر
 async function copyClientConfig(clientId) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        // استفاده از endpoint جدید برای دریافت لینک اشتراک
-        const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
+        const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
-        if (response) {
-            // بررسی اینکه آیا response یک رشته است یا یک آبجکت
-            let configString;
-            if (typeof response === 'string') {
-                configString = response;
-            } else if (typeof response === 'object') {
-                // اگر response یک آبجکت باشد، تبدیل به رشته
-                configString = JSON.stringify(response);
-            } else {
-                showNotification('خطا در دریافت لینک اشتراک: فرمت داده ناشناخته', 'error');
-                return;
-            }
+        if (data) {
+            const config = JSON.stringify(data.config, null, 2);
             
-            // کپی لینک اشتراک مستقیم
-            navigator.clipboard.writeText(configString).then(() => {
-                showNotification('لینک اشتراک با موفقیت کپی شد', 'success');
-            }).catch(err => {
-                console.error('Copy error:', err);
-                showNotification('خطا در کپی کردن لینک اشتراک', 'error');
+            // کپی در کلیپ‌بورد
+            navigator.clipboard.writeText(config).then(() => {
+                showNotification('کانفیگ با موفقیت کپی شد', 'success');
             });
-        } else {
-            showNotification('خطا در دریافت لینک اشتراک', 'error');
         }
     } catch (error) {
-        handleApiError(error, 'کپی کانفیگ کاربر');
+        console.error('Error copying client config:', error);
     }
 }
-
-// نمایش QR کد
-async function showQRCode(clientId) {
-    try {
-        const workerUrl = localStorage.getItem('workerUrl');
-        // استفاده از endpoint جدید برای دریافت لینک اشتراک
-        const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
-        
-        if (response) {
-            // بررسی اینکه آیا response یک رشته است یا یک آبجکت
-            let configString;
-            if (typeof response === 'string') {
-                configString = response;
-            } else if (typeof response === 'object') {
-                // اگر response یک آبجکت باشد، تبدیل به رشته
-                configString = JSON.stringify(response);
-            } else {
-                showNotification('خطا در دریافت لینک اشتراک: فرمت داده ناشناخته', 'error');
-                return;
-            }
-            
-            // ایجاد مودال QR کد
-            const qrModal = document.createElement('div');
-            qrModal.className = 'modal active';
-            qrModal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>QR Code کانفیگ</h3>
-                        <button class="close-modal">&times;</button>
-                    </div>
-                    <div class="modal-body" style="text-align: center;">
-                        <div id="qrcode" style="margin: 20px auto;"></div>
-                        <div class="config-text" style="word-break: break-all; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-top: 10px;">
-                            ${configString}
-                        </div>
-                        <button class="submit-btn" onclick="copyConfigToClipboard('${configString.replace(/'/g, "\\'")}')">
-                            <i class="fas fa-copy"></i> کپی کانفیگ
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(qrModal);
-            
-            // تولید QR کد
-            new QRCode(document.getElementById("qrcode"), {
-                text: configString,
-                width: 256,
-                height: 256,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
-            
-            // بستن مودال
-            qrModal.querySelector('.close-modal').addEventListener('click', () => {
-                document.body.removeChild(qrModal);
-            });
-        } else {
-            showNotification('خطا در دریافت لینک اشتراک', 'error');
-        }
-    } catch (error) {
-        handleApiError(error, 'نمایش QR کد');
-    }
-}
-
-// تبدیل کانفیگ به فرمت استاندارد
-function generateConfigString(config) {
-    switch (config.v) {
-        case "2": // VLESS/VMESS
-            if (config.ps && config.ps.includes("vmess")) {
-                // VMess config
-                const vmessConfig = {
-                    v: "2",
-                    ps: config.ps,
-                    add: config.add,
-                    port: config.port,
-                    id: config.id,
-                    aid: config.aid,
-                    net: config.net,
-                    type: config.type,
-                    host: config.host,
-                    path: config.path,
-                    tls: config.tls,
-                    sni: config.sni
-                };
-                return `vmess://${btoa(JSON.stringify(vmessConfig))}`;
-            } else {
-                // VLESS config
-                return `vless://${config.id}@${config.add}:${config.port}?encryption=none&security=${config.tls}&sni=${config.sni}&fp=${config.fp || 'chrome'}&type=${config.net}&host=${config.host}&path=${encodeURIComponent(config.path)}#${encodeURIComponent(config.ps)}`;
-            }
-        
-        case "trojan": // Trojan
-            return `trojan://${config.password}@${config.host || config.sni}:${config.port || 443}?security=${config.tls}&sni=${config.sni}&type=${config.type || 'ws'}&host=${config.host}&path=${encodeURIComponent(config.path || '/trojan')}#${encodeURIComponent(config.ps)}`;
-        
-        case "ss": // Shadowsocks
-            const ssConfig = {
-                method: config.method || 'chacha20-ietf-poly1305',
-                password: config.password,
-                server: config.server || config.add,
-                server_port: config.server_port || config.port || 443
-            };
-            
-            const ssUri = `${ssConfig.method}:${ssConfig.password}@${ssConfig.server}:${ssConfig.server_port}`;
-            const ssBase64 = btoa(ssUri);
-            
-            // افزودن پارامترهای اضافی
-            const pluginParams = new URLSearchParams();
-            pluginParams.set('security', config.tls || 'tls');
-            pluginParams.set('sni', config.sni || config.server || config.add);
-            pluginParams.set('type', config.type || 'ws');
-            pluginParams.set('host', config.host || config.sni || config.server || config.add);
-            pluginParams.set('path', config.path || '/shadowsocks');
-            
-            return `ss://${ssBase64}?${pluginParams.toString()}#${encodeURIComponent(config.ps)}`;
-        
-        default:
-            return JSON.stringify(config, null, 2);
-    }
-}
-
-// کپی مستقیم کانفیگ
-function copyConfigToClipboard(configString) {
-    navigator.clipboard.writeText(configString).then(() => {
-        showNotification('کانفیگ با موفقیت کپی شد', 'success');
-    }).catch(err => {
-        console.error('Copy error:', err);
-        showNotification('خطا در کپی کردن کانفیگ', 'error');
-    });
-}
-
 // حذف کاربر
 async function deleteClient(clientId) {
     if (confirm('آیا از حذف این کاربر مطمئن هستید؟')) {
@@ -518,11 +333,10 @@ async function deleteClient(clientId) {
             fetchDashboardData();
             showNotification('کاربر با موفقیت حذف شد', 'success');
         } catch (error) {
-            handleApiError(error, 'حذف کاربر');
+            console.error('Error deleting client:', error);
         }
     }
 }
-
 // حذف اینباند
 async function deleteInbound(inboundId) {
     if (confirm('آیا از حذف این اینباند مطمئن هستید؟')) {
@@ -536,17 +350,12 @@ async function deleteInbound(inboundId) {
             fetchDashboardData();
             showNotification('اینباند با موفقیت حذف شد', 'success');
         } catch (error) {
-            handleApiError(error, 'حذف اینباند');
+            console.error('Error deleting inbound:', error);
         }
     }
 }
-
 // تابع نمایش نوتیفیکیشن
 function showNotification(message, type = 'info') {
-    // حذف نوتیفیکیشن‌های قبلی
-    const existingNotifications = document.querySelectorAll('.notification');
-    existingNotifications.forEach(el => el.remove());
-    
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     
@@ -555,21 +364,14 @@ function showNotification(message, type = 'info') {
     else if (type === 'success') icon = 'fa-circle-check';
     
     notification.innerHTML = `
-        <i class="fas ${icon}"></i>
+        <svg class="fa-solid ${icon}" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
         <span>${message}</span>
     `;
     
     document.body.appendChild(notification);
     
-    // انیمیشن نمایش
-    setTimeout(() => {
-        notification.style.opacity = '1';
-        notification.style.transform = 'translateX(-50%) translateY(0)';
-    }, 100);
-    
     setTimeout(() => {
         notification.style.opacity = '0';
-        notification.style.transform = 'translateX(-50%) translateY(-20px)';
         setTimeout(() => {
             if (document.body.contains(notification)) {
                 document.body.removeChild(notification);
@@ -577,11 +379,10 @@ function showNotification(message, type = 'info') {
         }, 300);
     }, 3000);
 }
-
 // تابع عمومی برای درخواست‌های API
 async function makeApiRequest(url, options = {}) {
     const workerUrl = localStorage.getItem('workerUrl');
-    const token = sessionStorage.getItem('token'); // استفاده از sessionStorage به جای window.PASSAGE_TOKEN
+    const token = localStorage.getItem('token');
     
     if (!workerUrl || !token) {
         window.location.href = 'index.html';
@@ -590,7 +391,7 @@ async function makeApiRequest(url, options = {}) {
     
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // افزایش timeout به 15 ثانیه
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         const response = await fetch(`${workerUrl}${url}`, {
             ...options,
@@ -607,35 +408,21 @@ async function makeApiRequest(url, options = {}) {
         if (response.status === 401) {
             // توکن منقضی شده
             localStorage.clear();
-            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
             window.location.href = 'index.html';
             return;
         }
         
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const text = await response.text();
-        if (!text) {
-            return null;
-        }
-        
-        // بررسی اینکه آیا پاسخ یک JSON معتبر است یا نه
-        try {
-            return JSON.parse(text);
-        } catch (jsonError) {
-            // اگر تجزیه JSON ناموفق بود، خود متن را برگردان
-            console.warn('Response is not valid JSON:', text);
-            return text;
-        }
+        return await response.json();
     } catch (error) {
         console.error('API request failed:', error);
         if (error.name === 'AbortError') {
             showNotification('خطا در ارتباط با سرور (timeout)', 'error');
         } else {
-            showNotification('خطا در ارتباط با سرور: ' + error.message, 'error');
+            showNotification('خطا در ارتباط با سرور', 'error');
         }
         throw error;
     }
