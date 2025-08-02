@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
     const togglePassword = document.querySelector('.toggle-password');
     const passwordInput = document.getElementById('password');
+    const loginBtn = document.getElementById('loginBtn');
     
     // تغییر حالت نمایش رمز عبور
     togglePassword.addEventListener('click', function() {
@@ -14,21 +15,75 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // ارسال فرم ورود
-    loginForm.addEventListener('submit', function(e) {
+    loginForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         
-        const workerUrl = document.getElementById('workerUrl').value;
-        const username = document.getElementById('username').value;
+        const workerUrl = document.getElementById('workerUrl').value.trim();
+        const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
         
-        // ذخیره اطلاعات ورود به جز توکن
-        localStorage.setItem('workerUrl', workerUrl);
-        localStorage.setItem('username', username);
+        // اعتبارسنجی ورودی‌ها
+        if (!workerUrl || !username || !password) {
+            showNotification('لطفاً تمام فیلدها را پر کنید', 'error');
+            return;
+        }
         
-        // شبیه‌سازی ورود موفق
-        setTimeout(() => {
-            window.location.href = 'dashboard.html';
-        }, 1000);
+        // نمایش لودینگ
+        const originalText = loginBtn.innerHTML;
+        loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> در حال ورود...';
+        loginBtn.disabled = true;
+        
+        try {
+            // ارسال درخواست به API
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch(`${workerUrl}/api/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username,
+                    password
+                }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                // ذخیره اطلاعات ورود
+                localStorage.setItem('workerUrl', workerUrl);
+                localStorage.setItem('username', username);
+                localStorage.setItem('activationDate', new Date().toISOString());
+                
+                // ذخیره توکن در sessionStorage
+                sessionStorage.setItem('token', data.token);
+                
+                showNotification('ورود با موفقیت انجام شد', 'success');
+                
+                // هدایت به داشبورد
+                setTimeout(() => {
+                    window.location.href = 'dashboard.html';
+                }, 1500);
+            } else {
+                showNotification(data.error || 'خطا در ورود', 'error');
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            if (error.name === 'AbortError') {
+                showNotification('خطا در ارتباط با سرور', 'error');
+            } else {
+                showNotification('خطای ناشناخته رخ داده است', 'error');
+            }
+        } finally {
+            // بازگرداندن دکمه به حالت اولیه
+            loginBtn.innerHTML = originalText;
+            loginBtn.disabled = false;
+        }
     });
     
     // بارگذاری زبان

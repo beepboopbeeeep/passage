@@ -581,7 +581,7 @@ function showNotification(message, type = 'info') {
 // تابع عمومی برای درخواست‌های API
 async function makeApiRequest(url, options = {}) {
     const workerUrl = localStorage.getItem('workerUrl');
-    const token = window.PASSAGE_TOKEN; // استفاده از توکن در حافظه
+    const token = sessionStorage.getItem('token'); // استفاده از sessionStorage به جای window.PASSAGE_TOKEN
     
     if (!workerUrl || !token) {
         window.location.href = 'index.html';
@@ -607,7 +607,7 @@ async function makeApiRequest(url, options = {}) {
         if (response.status === 401) {
             // توکن منقضی شده
             localStorage.clear();
-            delete window.PASSAGE_TOKEN; // حذف توکن از حافظه
+            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
             window.location.href = 'index.html';
             return;
         }
