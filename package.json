@@ -1,0 +1,26 @@
+{
+  "name": "passage",
+  "version": "1.0.0",
+  "description": "A powerful management panel for V2Ray configs on Cloudflare Workers",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler publish",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "v2ray",
+    "cloudflare",
+    "worker",
+    "proxy",
+    "vpn"
+  ],
+  "author": "Najidevs",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^2.0.0"
+  },
+  "dependencies": {
+    "crypto-js": "^4.1.1"
+  }
+}

@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
         
-        // ذخیره اطلاعات ورود
+        // ذخیره اطلاعات ورود به جز توکن
         localStorage.setItem('workerUrl', workerUrl);
         localStorage.setItem('username', username);
         

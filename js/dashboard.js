@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
     logoutBtn.addEventListener('click', function() {
         if (confirm(translations[localStorage.getItem('language') || 'fa'].logout + '?')) {
             localStorage.clear();
+            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
             window.location.href = 'index.html';
         }
     });
@@ -189,30 +190,36 @@ function updateClientsTable(clients) {
     const tbody = document.getElementById('clientsTableBody');
     tbody.innerHTML = '';
     
+    if (!clients || clients.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td colspan="5" style="text-align: center;">هیچ کاربری یافت نشد</td>
+        `;
+        tbody.appendChild(row);
+        return;
+    }
+    
     clients.forEach(client => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${client.username}</td>
-            <td>${client.protocol}</td>
+            <td>${client.username || '-'}</td>
+            <td>${client.protocol || '-'}</td>
             <td>${client.expiryDate || 'نامحدود'}</td>
             <td>
-                <span class="status-badge status-${client.status}">
+                <span class="status-badge status-${client.status || 'inactive'}">
                     ${client.status === 'active' ? 'فعال' : 'غیرفعال'}
                 </span>
             </td>
             <td>
                 <div class="action-buttons">
-                    <button class="action-btn edit" onclick="editClient('${client.id}')">
-                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    <button class="action-btn copy" onclick="copyClientConfig('${client.id}')" title="کپی کانفیگ">
+                        <i class="fas fa-copy"></i>
                     </button>
-                    <button class="action-btn copy" onclick="copyClientConfig('${client.id}')">
-                        <svg class="fa-solid fa-copy" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    <button class="action-btn qr" onclick="showQRCode('${client.id}')" title="نمایش QR کد">
+                        <i class="fas fa-qrcode"></i>
                     </button>
-                    <button class="action-btn qr" onclick="showQRCode('${client.id}')">
-                        <svg class="fa-solid fa-qrcode" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
-                    </button>
-                    <button class="action-btn delete" onclick="deleteClient('${client.id}')">
-                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    <button class="action-btn delete" onclick="deleteClient('${client.id}')" title="حذف کاربر">
+                        <i class="fas fa-trash"></i>
                     </button>
                 </div>
             </td>
@@ -240,26 +247,32 @@ function updateInboundsTable(inbounds) {
     const tbody = document.getElementById('inboundsTableBody');
     tbody.innerHTML = '';
     
+    if (!inbounds || inbounds.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td colspan="7" style="text-align: center;">هیچ اینباندی یافت نشد</td>
+        `;
+        tbody.appendChild(row);
+        return;
+    }
+    
     inbounds.forEach(inbound => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${inbound.inbound_name}</td>
-            <td>${inbound.protocol}</td>
-            <td>${inbound.port}</td>
-            <td>${inbound.network}</td>
-            <td>${inbound.security}</td>
+            <td>${inbound.inbound_name || '-'}</td>
+            <td>${inbound.protocol || '-'}</td>
+            <td>${inbound.port || '-'}</td>
+            <td>${inbound.network || '-'}</td>
+            <td>${inbound.security || '-'}</td>
             <td>
-                <span class="status-badge status-${inbound.status}">
-                    ${inbound.status === 'فعال' ? 'فعال' : 'غیرفعال'}
+                <span class="status-badge status-${inbound.status === 'فعال' ? 'active' : 'inactive'}">
+                    ${inbound.status || 'نامشخص'}
                 </span>
             </td>
             <td>
                 <div class="action-buttons">
-                    <button class="action-btn edit" onclick="editInbound('${inbound.id}')">
-                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
-                    </button>
-                    <button class="action-btn delete" onclick="deleteInbound('${inbound.id}')">
-                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                    <button class="action-btn delete" onclick="deleteInbound('${inbound.id}')" title="حذف اینباند">
+                        <i class="fas fa-trash"></i>
                     </button>
                 </div>
             </td>
@@ -498,6 +511,10 @@ async function deleteInbound(inboundId) {
 
 // تابع نمایش نوتیفیکیشن
 function showNotification(message, type = 'info') {
+    // حذف نوتیفیکیشن‌های قبلی
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(el => el.remove());
+    
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     
@@ -506,14 +523,21 @@ function showNotification(message, type = 'info') {
     else if (type === 'success') icon = 'fa-circle-check';
     
     notification.innerHTML = `
-        <svg class="fa-solid ${icon}" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+        <i class="fas ${icon}"></i>
         <span>${message}</span>
     `;
     
     document.body.appendChild(notification);
     
+    // انیمیشن نمایش
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(-50%) translateY(0)';
+    }, 100);
+    
     setTimeout(() => {
         notification.style.opacity = '0';
+        notification.style.transform = 'translateX(-50%) translateY(-20px)';
         setTimeout(() => {
             if (document.body.contains(notification)) {
                 document.body.removeChild(notification);
@@ -525,7 +549,7 @@ function showNotification(message, type = 'info') {
 // تابع عمومی برای درخواست‌های API
 async function makeApiRequest(url, options = {}) {
     const workerUrl = localStorage.getItem('workerUrl');
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token'); // استفاده از sessionStorage به جای localStorage
     
     if (!workerUrl || !token) {
         window.location.href = 'index.html';
@@ -551,6 +575,7 @@ async function makeApiRequest(url, options = {}) {
         if (response.status === 401) {
             // توکن منقضی شده
             localStorage.clear();
+            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
             window.location.href = 'index.html';
             return;
         }

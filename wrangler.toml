@@ -1,0 +1,26 @@
+name = "passage"
+type = "javascript"
+account_id = ""
+workers_dev = true
+route = ""
+zone_id = ""
+
+kv_namespaces = [
+  { binding = "AUTH", id = "", preview_id = "" },
+  { binding = "USERS", id = "", preview_id = "" },
+  { binding = "INBOUNDS", id = "", preview_id = "" },
+  { binding = "TOKENS", id = "", preview_id = "" }
+]
+
+[build]
+command = ""
+
+[dev]
+ip = "0.0.0.0"
+port = 8787
+local_protocol = "http"
+upstream_protocol = "https"
+
+[env.production]
+name = "passage"
+route = ""

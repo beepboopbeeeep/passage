@@ -568,11 +568,13 @@
                 const data = await response.json();
                 
                 if (response.ok && data.success) {
-                    // ذخیره اطلاعات ورود
+                    // ذخیره اطلاعات ورود به جز توکن
                     localStorage.setItem('workerUrl', workerUrl);
                     localStorage.setItem('username', username);
-                    localStorage.setItem('token', data.token);
                     localStorage.setItem('activationDate', new Date().toISOString());
+                    
+                    // ذخیره توکن در sessionStorage به جای localStorage
+                    sessionStorage.setItem('token', data.token);
                     
                     showNotification('ورود با موفقیت انجام شد', 'success');
                     
