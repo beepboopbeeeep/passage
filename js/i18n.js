@@ -103,6 +103,9 @@ const translations = {
         copy: "Copy"
     }
 };
+// Make translations globally accessible
+window.translations = translations;
+
 // تابع تغییر زبان
 function setLanguage(lang) {
     localStorage.setItem('language', lang);

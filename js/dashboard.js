@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     themeToggle.addEventListener('click', function() {
         body.classList.toggle('light-mode');
-        const icon = this.querySelector('svg');
+        const icon = this.querySelector('i');
         if (body.classList.contains('light-mode')) {
             icon.classList.remove('fa-moon');
             icon.classList.add('fa-sun');
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const logoutBtn = document.getElementById('logoutBtn');
     
     logoutBtn.addEventListener('click', function() {
-        if (confirm(translations[localStorage.getItem('language') || 'fa'].logout + '?')) {
+        if (confirm(window.translations[localStorage.getItem('language') || 'fa'].logout + '?')) {
             localStorage.clear();
             window.location.href = 'index.html';
         }
@@ -197,13 +197,13 @@ function updateClientsTable(clients) {
             <td>
                 <div class="action-buttons">
                     <button class="action-btn edit" onclick="editClient('${client.id}')">
-                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                        <i class="fas fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></i>
                     </button>
                     <button class="action-btn copy" onclick="copyClientConfig('${client.id}')">
-                        <svg class="fa-solid fa-copy" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                        <i class="fas fa-copy" style="width: 16px; height: 16px;" aria-hidden="true"></i>
                     </button>
                     <button class="action-btn delete" onclick="deleteClient('${client.id}')">
-                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                        <i class="fas fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></i>
                     </button>
                 </div>
             </td>
@@ -245,10 +245,10 @@ function updateInboundsTable(inbounds) {
             <td>
                 <div class="action-buttons">
                     <button class="action-btn edit" onclick="editInbound('${inbound.id}')">
-                        <svg class="fa-solid fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                        <i class="fas fa-edit" style="width: 16px; height: 16px;" aria-hidden="true"></i>
                     </button>
                     <button class="action-btn delete" onclick="deleteInbound('${inbound.id}')">
-                        <svg class="fa-solid fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+                        <i class="fas fa-trash" style="width: 16px; height: 16px;" aria-hidden="true"></i>
                     </button>
                 </div>
             </td>
@@ -270,6 +270,7 @@ async function createClient(clientData) {
         showNotification('کاربر با موفقیت ایجاد شد', 'success');
     } catch (error) {
         console.error('Error creating client:', error);
+        showNotification('خطا در ایجاد کاربر', 'error');
     }
 }
 // ایجاد اینباند جدید
@@ -286,6 +287,7 @@ async function createInbound(inboundData) {
         showNotification('اینباند با موفقیت ایجاد شد', 'success');
     } catch (error) {
         console.error('Error creating inbound:', error);
+        showNotification('خطا در ایجاد اینباند', 'error');
     }
 }
 // به‌روزرسانی تنظیمات
@@ -300,6 +302,7 @@ async function updateSettings(settingsData) {
         showNotification('تنظیمات با موفقیت ذخیره شد', 'success');
     } catch (error) {
         console.error('Error updating settings:', error);
+        showNotification('خطا در ذخیره تنظیمات', 'error');
     }
 }
 // کپی کانفیگ کاربر
@@ -314,10 +317,14 @@ async function copyClientConfig(clientId) {
             // کپی در کلیپ‌بورد
             navigator.clipboard.writeText(config).then(() => {
                 showNotification('کانفیگ با موفقیت کپی شد', 'success');
+            }).catch(err => {
+                showNotification('خطا در کپی کانفیگ', 'error');
+                console.error('Clipboard write failed:', err);
             });
         }
     } catch (error) {
         console.error('Error copying client config:', error);
+        showNotification('خطا در دریافت کانفیگ', 'error');
     }
 }
 // حذف کاربر
@@ -334,6 +341,7 @@ async function deleteClient(clientId) {
             showNotification('کاربر با موفقیت حذف شد', 'success');
         } catch (error) {
             console.error('Error deleting client:', error);
+            showNotification('خطا در حذف کاربر', 'error');
         }
     }
 }
@@ -351,20 +359,30 @@ async function deleteInbound(inboundId) {
             showNotification('اینباند با موفقیت حذف شد', 'success');
         } catch (error) {
             console.error('Error deleting inbound:', error);
+            showNotification('خطا در حذف اینباند', 'error');
         }
     }
+}
+// ویرایش کاربر
+function editClient(clientId) {
+    showNotification('ویرایش کاربر در دست توسعه است', 'info');
+}
+
+// ویرایش اینباند
+function editInbound(inboundId) {
+    showNotification('ویرایش اینباند در دست توسعه است', 'info');
 }
 // تابع نمایش نوتیفیکیشن
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
     
-    let icon = 'fa-circle-info';
-    if (type === 'error') icon = 'fa-circle-exclamation';
-    else if (type === 'success') icon = 'fa-circle-check';
+    let icon = 'fa-info-circle';
+    if (type === 'error') icon = 'fa-exclamation-circle';
+    else if (type === 'success') icon = 'fa-check-circle';
     
     notification.innerHTML = `
-        <svg class="fa-solid ${icon}" style="width: 16px; height: 16px;" aria-hidden="true"></svg>
+        <i class="fas ${icon}"></i>
         <span>${message}</span>
     `;
     

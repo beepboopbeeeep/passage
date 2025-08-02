@@ -55,7 +55,15 @@ async function handleRequest(request) {
 // ورود کاربر
 async function handleLogin(request) {
     try {
-        const { workerUrl, username, password } = await request.json();
+        const { username, password } = await request.json();
+        const workerUrl = new URL(request.url).searchParams.get('workerUrl');
+        
+        if (!workerUrl) {
+            return new Response(JSON.stringify({ error: 'Worker URL is required' }), { 
+                status: 400, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            });
+        }
         
         // دریافت اطلاعات احراز هویت
         const authKey = `auth_${workerUrl}`;

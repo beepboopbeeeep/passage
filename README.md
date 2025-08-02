@@ -38,6 +38,27 @@ Make sure to change these after first login for security reasons.
 - Cloudflare Workers
 - Cloudflare KV
 
+## Security Notes
+
+- Default credentials are admin/admin - change them immediately after first login
+- Tokens expire after 24 hours
+- All communication should happen over HTTPS
+
+## API Endpoints
+
+- `POST /api/login` - User authentication
+- `GET /api/users` - Get all users
+- `POST /api/users` - Create a new user
+- `PUT /api/users/{id}` - Update a user
+- `DELETE /api/users/{id}` - Delete a user
+- `GET /api/inbounds` - Get all inbounds
+- `POST /api/inbounds` - Create a new inbound
+- `PUT /api/inbounds/{id}` - Update an inbound
+- `DELETE /api/inbounds/{id}` - Delete an inbound
+- `GET /api/stats` - Get statistics
+- `GET /api/config/{id}` - Get user configuration
+- `PUT /api/settings` - Update settings
+
 ## License
 
 MIT
