@@ -250,7 +250,7 @@ function updateInboundsTable(inbounds) {
             <td>${inbound.security}</td>
             <td>
                 <span class="status-badge status-${inbound.status}">
-                    ${inbound.status === 'active' ? 'فعال' : 'غیرفعال'}
+                    ${inbound.status === 'فعال' ? 'فعال' : 'غیرفعال'}
                 </span>
             </td>
             <td>
@@ -321,23 +321,23 @@ async function updateSettings(settingsData) {
 async function copyClientConfig(clientId) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
+        // استفاده از endpoint جدید برای دریافت لینک اشتراک
+        const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
-        if (data && data.config) {
-            // تبدیل کانفیگ به فرمت استاندارد
-            const configString = generateConfigString(data.config);
-            
-            // کپی در کلیپ‌بورد
-            navigator.clipboard.writeText(configString).then(() => {
-                showNotification('کانفیگ با موفقیت کپی شد', 'success');
+        if (response) {
+            // کپی لینک اشتراک مستقیم
+            navigator.clipboard.writeText(response).then(() => {
+                showNotification('لینک اشتراک با موفقیت کپی شد', 'success');
             }).catch(err => {
                 console.error('Copy error:', err);
-                showNotification('خطا در کپی کردن کانفیگ', 'error');
+                showNotification('خطا در کپی کردن لینک اشتراک', 'error');
             });
+        } else {
+            showNotification('خطا در دریافت لینک اشتراک', 'error');
         }
     } catch (error) {
         console.error('Error copying config:', error);
-        showNotification('خطا در دریافت کانفیگ', 'error');
+        showNotification('خطا در دریافت لینک اشتراک', 'error');
     }
 }
 
@@ -345,11 +345,10 @@ async function copyClientConfig(clientId) {
 async function showQRCode(clientId) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
+        // استفاده از endpoint جدید برای دریافت لینک اشتراک
+        const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
-        if (data && data.config) {
-            const configString = generateConfigString(data.config);
-            
+        if (response) {
             // ایجاد مودال QR کد
             const qrModal = document.createElement('div');
             qrModal.className = 'modal active';
@@ -362,9 +361,9 @@ async function showQRCode(clientId) {
                     <div class="modal-body" style="text-align: center;">
                         <div id="qrcode" style="margin: 20px auto;"></div>
                         <div class="config-text" style="word-break: break-all; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-top: 10px;">
-                            ${configString}
+                            ${response}
                         </div>
-                        <button class="submit-btn" onclick="copyConfigToClipboard('${configString.replace(/'/g, "\\'")}')">
+                        <button class="submit-btn" onclick="copyConfigToClipboard('${response.replace(/'/g, "\\'")}')">
                             <i class="fas fa-copy"></i> کپی کانفیگ
                         </button>
                     </div>
@@ -375,7 +374,7 @@ async function showQRCode(clientId) {
             
             // تولید QR کد
             new QRCode(document.getElementById("qrcode"), {
-                text: configString,
+                text: response,
                 width: 256,
                 height: 256,
                 colorDark: "#000000",
@@ -387,6 +386,8 @@ async function showQRCode(clientId) {
             qrModal.querySelector('.close-modal').addEventListener('click', () => {
                 document.body.removeChild(qrModal);
             });
+        } else {
+            showNotification('خطا در دریافت لینک اشتراک', 'error');
         }
     } catch (error) {
         console.error('Error generating QR:', error);
@@ -398,7 +399,7 @@ async function showQRCode(clientId) {
 function generateConfigString(config) {
     switch (config.v) {
         case "2": // VLESS/VMESS
-            if (config.ps && config.ps.startsWith("Passage-vmess")) {
+            if (config.ps && config.ps.includes("vmess")) {
                 // VMess config
                 const vmessConfig = {
                     v: "2",
@@ -417,15 +418,32 @@ function generateConfigString(config) {
                 return `vmess://${btoa(JSON.stringify(vmessConfig))}`;
             } else {
                 // VLESS config
-                return `vless://${config.id}@${config.add}:${config.port}?encryption=none&security=${config.tls}&type=${config.net}&host=${config.host}&path=${encodeURIComponent(config.path)}&sni=${config.sni}#${encodeURIComponent(config.ps)}`;
+                return `vless://${config.id}@${config.add}:${config.port}?encryption=none&security=${config.tls}&sni=${config.sni}&fp=${config.fp || 'chrome'}&type=${config.net}&host=${config.host}&path=${encodeURIComponent(config.path)}#${encodeURIComponent(config.ps)}`;
             }
         
         case "trojan": // Trojan
-            return `trojan://${config.password}@${config.sni}:443?security=${config.tls}&type=${config.type}&host=${config.host}&path=${encodeURIComponent(config.path)}#${encodeURIComponent(config.ps)}`;
+            return `trojan://${config.password}@${config.host || config.sni}:${config.port || 443}?security=${config.tls}&sni=${config.sni}&type=${config.type || 'ws'}&host=${config.host}&path=${encodeURIComponent(config.path || '/trojan')}#${encodeURIComponent(config.ps)}`;
         
         case "ss": // Shadowsocks
-            const ssUri = `${config.method}:${config.password}@${config.server}:${config.server_port}`;
-            return `ss://${btoa(ssUri)}#${encodeURIComponent(config.ps)}`;
+            const ssConfig = {
+                method: config.method || 'chacha20-ietf-poly1305',
+                password: config.password,
+                server: config.server || config.add,
+                server_port: config.server_port || config.port || 443
+            };
+            
+            const ssUri = `${ssConfig.method}:${ssConfig.password}@${ssConfig.server}:${ssConfig.server_port}`;
+            const ssBase64 = btoa(ssUri);
+            
+            // افزودن پارامترهای اضافی
+            const pluginParams = new URLSearchParams();
+            pluginParams.set('security', config.tls || 'tls');
+            pluginParams.set('sni', config.sni || config.server || config.add);
+            pluginParams.set('type', config.type || 'ws');
+            pluginParams.set('host', config.host || config.sni || config.server || config.add);
+            pluginParams.set('path', config.path || '/shadowsocks');
+            
+            return `ss://${ssBase64}?${pluginParams.toString()}#${encodeURIComponent(config.ps)}`;
         
         default:
             return JSON.stringify(config, null, 2);
@@ -516,7 +534,7 @@ async function makeApiRequest(url, options = {}) {
     
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // افزایش timeout به 15 ثانیه
         
         const response = await fetch(`${workerUrl}${url}`, {
             ...options,
@@ -538,16 +556,22 @@ async function makeApiRequest(url, options = {}) {
         }
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
         }
         
-        return await response.json();
+        const text = await response.text();
+        if (!text) {
+            return null;
+        }
+        
+        return JSON.parse(text);
     } catch (error) {
         console.error('API request failed:', error);
         if (error.name === 'AbortError') {
             showNotification('خطا در ارتباط با سرور (timeout)', 'error');
         } else {
-            showNotification('خطا در ارتباط با سرور', 'error');
+            showNotification('خطا در ارتباط با سرور: ' + error.message, 'error');
         }
         throw error;
     }
