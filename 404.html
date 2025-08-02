@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passage - Page Not Found</title>
+    
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* متغیرهای رنگی */
+        :root {
+            --primary-color: #C7A46C;
+            --primary-dark: #B0905F;
+            --primary-light: #D4B887;
+            --bg-color: #0F0F0F;
+            --surface-color: #1A1A1A;
+            --surface-light: #252525;
+            --text-color: #E0E0E0;
+            --text-secondary: #A0A0A0;
+            --border-radius: 12px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            text-align: center;
+            max-width: 500px;
+        }
+        
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            border-radius: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 25px rgba(199, 164, 108, 0.3);
+        }
+        
+        .logo i {
+            font-size: 32px;
+            color: #FFF;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            color: #FFF;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: var(--transition);
+            box-shadow: 0 10px 25px rgba(199, 164, 108, 0.3);
+            text-decoration: none;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(199, 164, 108, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <i class="fas fa-route"></i>
+        </div>
+        <h1>صفحه مورد نظر یافت نشد</h1>
+        <p>صفحه‌ای که به دنبال آن بودید وجود ندارد یا منتقل شده است.</p>
+        <a href="index.html" class="btn">
+            <i class="fas fa-home"></i>
+            بازگشت به خانه
+        </a>
+    </div>
+    
+    <script>
+        // If this is a single page application, redirect to index.html
+        if (window.location.pathname !== '/passage/' && window.location.pathname !== '/passage/index.html') {
+            window.location.replace('/passage/index.html');
+        }
+    </script>
+</body>
+</html>
