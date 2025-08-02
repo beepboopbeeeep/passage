@@ -573,8 +573,8 @@
                     localStorage.setItem('username', username);
                     localStorage.setItem('activationDate', new Date().toISOString());
                     
-                    // ذخیره توکن در sessionStorage به جای localStorage
-                    sessionStorage.setItem('token', data.token);
+                    // ذخیره توکن در یک متغیر در حافظه (به جای localStorage)
+                    window.PASSAGE_TOKEN = data.token;
                     
                     showNotification('ورود با موفقیت انجام شد', 'success');
                     

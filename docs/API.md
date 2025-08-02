@@ -223,3 +223,33 @@ Response (Base64 encoded):
 ```
 dm1lc3M6Ly9leGFtcGxl...
 ```
+
+### Proxy Configuration
+
+#### Create a proxy configuration
+```
+POST /api/proxy-config/{configId}
+Content-Type: application/json
+
+{
+  "host": "original-domain.com",
+  "port": "443",
+  "path": "/config",
+  "protocol": "vless",
+  "uuid": "user-uuid"
+}
+```
+
+Response:
+```json
+{
+  "success": true
+}
+```
+
+#### Use proxy configuration
+```
+GET /proxy/{host}:{port}/{path...}
+```
+
+This endpoint proxies requests to the original server through the Worker, hiding the original server's address.

@@ -4,7 +4,7 @@
 
 // متغیرهای عمومی
 let corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': '*', // بعداً با مقدار مناسب جایگزین می‌شود
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Max-Age': '86400' // 24 ساعت کش Preflight
@@ -23,6 +23,13 @@ addEventListener('fetch', event => {
 async function handleRequest(request) {
   const url = new URL(request.url);
   const path = url.pathname;
+  
+  // تنظیم CORS بر اساس منبع درخواست
+  const origin = request.headers.get('Origin');
+  // در محیط واقعی، این مقدار باید با دامنه معتبر جایگزین شود
+  const allowedOrigin = origin && (origin.endsWith('.workers.dev') || origin.includes('localhost')) ? origin : '';
+  
+  corsHeaders['Access-Control-Allow-Origin'] = allowedOrigin;
   
   // مدیریت Preflight CORS
   if (request.method === 'OPTIONS') {
@@ -131,7 +138,7 @@ async function handleApiRequest(request, path) {
 async function handleSubscription(request, path) {
   try {
     const clientId = path.substring(5); // حذف /sub/
-    return await generateSubscription(clientId);
+    return await generateSubscription(clientId, request);
   } catch (error) {
     return new Response(JSON.stringify({ error: 'Failed to generate subscription' }), {
       status: 500,
@@ -145,7 +152,24 @@ async function handleSubscription(request, path) {
  */
 async function handleLogin(request) {
   try {
-    const { username, password } = await request.json();
+    const loginData = await request.json();
+    
+    // اعتبارسنجی داده‌های ورودی
+    if (!loginData.username || typeof loginData.username !== 'string') {
+      return new Response(JSON.stringify({ error: 'Username is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!loginData.password || typeof loginData.password !== 'string') {
+      return new Response(JSON.stringify({ error: 'Password is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const { username, password } = loginData;
     
     // دریافت اطلاعات احراز هویت از KV
     const authData = await AUTH.get('admin');
@@ -177,6 +201,13 @@ async function handleLogin(request) {
       });
     }
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     return new Response(JSON.stringify({ error: 'Login failed', message: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -290,6 +321,46 @@ async function handleCreateUser(request) {
   try {
     const userData = await request.json();
     
+    // اعتبارسنجی داده‌های ورودی
+    if (!userData.username || typeof userData.username !== 'string') {
+      return new Response(JSON.stringify({ error: 'Username is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!userData.protocol || typeof userData.protocol !== 'string') {
+      return new Response(JSON.stringify({ error: 'Protocol is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const validProtocols = ['vless', 'vmess', 'trojan', 'shadowsocks'];
+    if (!validProtocols.includes(userData.protocol)) {
+      return new Response(JSON.stringify({ error: 'Invalid protocol. Must be one of: vless, vmess, trojan, shadowsocks' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (userData.status && !['active', 'inactive'].includes(userData.status)) {
+      return new Response(JSON.stringify({ error: 'Invalid status. Must be either active or inactive' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (userData.expiry_date) {
+      const expiryDate = new Date(userData.expiry_date);
+      if (isNaN(expiryDate.getTime())) {
+        return new Response(JSON.stringify({ error: 'Invalid expiry_date format. Must be a valid ISO date string' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
     // تولید ID یکتا
     const id = crypto.randomUUID();
     
@@ -306,6 +377,7 @@ async function handleCreateUser(request) {
       method: 'chacha20-ietf-poly1305', // برای Shadowsocks
       inboundId: '', // باید از لیست اینباندها انتخاب شود
       status: userData.status || 'active',
+      expiryDate: userData.expiry_date || null, // تاریخ انقضا
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -317,6 +389,13 @@ async function handleCreateUser(request) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     return new Response(JSON.stringify({ error: 'Failed to create user', message: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -375,6 +454,74 @@ async function handleCreateInbound(request) {
   try {
     const inboundData = await request.json();
     
+    // اعتبارسنجی داده‌های ورودی
+    if (!inboundData.inbound_name || typeof inboundData.inbound_name !== 'string') {
+      return new Response(JSON.stringify({ error: 'Inbound name is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!inboundData.protocol || typeof inboundData.protocol !== 'string') {
+      return new Response(JSON.stringify({ error: 'Protocol is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const validProtocols = ['vless', 'vmess', 'trojan', 'shadowsocks'];
+    if (!validProtocols.includes(inboundData.protocol)) {
+      return new Response(JSON.stringify({ error: 'Invalid protocol. Must be one of: vless, vmess, trojan, shadowsocks' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!inboundData.port || typeof inboundData.port !== 'string') {
+      return new Response(JSON.stringify({ error: 'Port is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const portNumber = parseInt(inboundData.port, 10);
+    if (isNaN(portNumber) || portNumber < 1 || portNumber > 65535) {
+      return new Response(JSON.stringify({ error: 'Invalid port. Must be a number between 1 and 65535' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!inboundData.network || typeof inboundData.network !== 'string') {
+      return new Response(JSON.stringify({ error: 'Network is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const validNetworks = ['ws', 'grpc', 'tcp'];
+    if (!validNetworks.includes(inboundData.network)) {
+      return new Response(JSON.stringify({ error: 'Invalid network. Must be one of: ws, grpc, tcp' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (inboundData.security && typeof inboundData.security !== 'string') {
+      return new Response(JSON.stringify({ error: 'Security must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const validSecurities = ['tls', 'none'];
+    if (inboundData.security && !validSecurities.includes(inboundData.security)) {
+      return new Response(JSON.stringify({ error: 'Invalid security. Must be one of: tls, none' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     // تولید ID یکتا
     const id = crypto.randomUUID();
     
@@ -403,6 +550,13 @@ async function handleCreateInbound(request) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     return new Response(JSON.stringify({ error: 'Failed to create inbound', message: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -450,7 +604,22 @@ async function handleDeleteInbound(request, inboundId) {
  */
 async function handleUpdateSettings(request) {
   try {
-    const { password } = await request.json();
+    const settingsData = await request.json();
+    
+    // اعتبارسنجی داده‌های ورودی
+    if (!settingsData.password || typeof settingsData.password !== 'string') {
+      return new Response(JSON.stringify({ error: 'Password is required and must be a string' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (settingsData.password.length < 6) {
+      return new Response(JSON.stringify({ error: 'Password must be at least 6 characters long' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     
     // دریافت اطلاعات فعلی
     const authData = await AUTH.get('admin');
@@ -460,12 +629,12 @@ async function handleUpdateSettings(request) {
     if (!authData) {
       auth = {
         username: 'admin',
-        password: password
+        password: settingsData.password
       };
     } else {
       auth = JSON.parse(authData);
       // به‌روزرسانی رمز عبور
-      auth.password = password;
+      auth.password = settingsData.password;
     }
     
     // ذخیره در KV
@@ -475,6 +644,13 @@ async function handleUpdateSettings(request) {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return new Response(JSON.stringify({ error: 'Invalid JSON format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
     return new Response(JSON.stringify({ error: 'Failed to update settings', message: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -487,7 +663,7 @@ async function handleUpdateSettings(request) {
  */
 async function handleGetSubscription(request, clientId) {
   try {
-    const config = await generateUserConfig(clientId);
+    const config = await generateUserConfig(clientId, request);
     if (!config) {
       return new Response(JSON.stringify({ error: 'User not found' }), {
         status: 404,
@@ -513,13 +689,20 @@ async function handleGetSubscription(request, clientId) {
 /**
  * تولید کانفیگ کاربر
  */
-async function generateUserConfig(clientId) {
+async function generateUserConfig(clientId, request) {
   try {
     // دریافت اطلاعات کاربر
     const userData = await USERS.get(clientId);
     if (!userData) return null;
     
     const user = JSON.parse(userData);
+    
+    // بررسی وضعیت کاربر و تاریخ انقضا
+    if (user.status !== 'active') return null;
+    if (user.expiryDate) {
+      const expiryDate = new Date(user.expiryDate);
+      if (new Date() > expiryDate) return null;
+    }
     
     // دریافت اطلاعات اینباند (در اینجا اولین اینباند موجود)
     const inboundsRaw = await INBOUNDS.list();
@@ -531,21 +714,25 @@ async function generateUserConfig(clientId) {
     
     const inbound = JSON.parse(inboundData);
     
+    // استخراج hostname از درخواست
+    const url = new URL(request.url);
+    const hostname = url.hostname;
+    
     // تولید کانفیگ بر اساس پروتکل
     let config = '';
     
     switch (user.protocol) {
       case 'vless':
-        config = generateVLESSConfig(user, inbound);
+        config = generateVLESSConfig(user, inbound, hostname);
         break;
       case 'vmess':
-        config = generateVMessConfig(user, inbound);
+        config = generateVMessConfig(user, inbound, hostname);
         break;
       case 'trojan':
-        config = generateTrojanConfig(user, inbound);
+        config = generateTrojanConfig(user, inbound, hostname);
         break;
       case 'shadowsocks':
-        config = generateShadowsocksConfig(user, inbound);
+        config = generateShadowsocksConfig(user, inbound, hostname);
         break;
       default:
         return null;
@@ -561,28 +748,28 @@ async function generateUserConfig(clientId) {
 /**
  * تولید کانفیگ VLESS
  */
-function generateVLESSConfig(user, inbound) {
-  const config = `vless://${user.uuid}@example.com:443?encryption=none&security=tls&type=ws&host=example.com&path=${encodeURIComponent(inbound.path)}&sni=example.com&fp=chrome#${encodeURIComponent(user.username)}`;
+function generateVLESSConfig(user, inbound, hostname) {
+  const config = `vless://${user.uuid}@${hostname}:443?encryption=none&security=tls&type=ws&host=${hostname}&path=${encodeURIComponent(inbound.path)}&sni=${hostname}&fp=chrome#${encodeURIComponent(user.username)}`;
   return config;
 }
 
 /**
  * تولید کانفیگ VMess
  */
-function generateVMessConfig(user, inbound) {
+function generateVMessConfig(user, inbound, hostname) {
   const config = {
     v: "2",
     ps: user.username,
-    add: "example.com",
+    add: hostname,
     port: "443",
     id: user.uuid,
     aid: "0",
     net: "ws",
     type: "none",
-    host: "example.com",
+    host: hostname,
     path: inbound.path,
     tls: "tls",
-    sni: "example.com",
+    sni: hostname,
     alpn: ""
   };
   
@@ -592,25 +779,25 @@ function generateVMessConfig(user, inbound) {
 /**
  * تولید کانفیگ Trojan
  */
-function generateTrojanConfig(user, inbound) {
-  return `trojan://${user.uuid}@example.com:443?security=tls&type=ws&path=${encodeURIComponent(inbound.path)}&host=example.com&sni=example.com#${encodeURIComponent(user.username)}`;
+function generateTrojanConfig(user, inbound, hostname) {
+  return `trojan://${user.uuid}@${hostname}:443?security=tls&type=ws&path=${encodeURIComponent(inbound.path)}&host=${hostname}&sni=${hostname}#${encodeURIComponent(user.username)}`;
 }
 
 /**
  * تولید کانفیگ Shadowsocks
  */
-function generateShadowsocksConfig(user, inbound) {
-  const ssConfig = `${user.method}:${user.uuid}@example.com:443`;
+function generateShadowsocksConfig(user, inbound, hostname) {
+  const ssConfig = `${user.method}:${user.uuid}@${hostname}:443`;
   const encodedConfig = btoa(ssConfig);
-  return `ss://${encodedConfig}?security=tls&type=ws&path=${encodeURIComponent(inbound.path)}&host=example.com&sni=example.com#${encodeURIComponent(user.username)}`;
+  return `ss://${encodedConfig}?security=tls&type=ws&path=${encodeURIComponent(inbound.path)}&host=${hostname}&sni=${hostname}#${encodeURIComponent(user.username)}`;
 }
 
 /**
  * تولید اشتراک کاربر
  */
-async function generateSubscription(clientId) {
+async function generateSubscription(clientId, request) {
   try {
-    const config = await generateUserConfig(clientId);
+    const config = await generateUserConfig(clientId, request);
     if (!config) {
       return new Response('User not found', { status: 404 });
     }

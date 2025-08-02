@@ -146,7 +146,7 @@ function updateActivationDays() {
 async function fetchDashboardData() {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const token = localStorage.getItem('token');
+        const token = window.PASSAGE_TOKEN;
         
         if (!workerUrl || !token) {
             window.location.href = 'index.html';
@@ -160,7 +160,7 @@ async function fetchDashboardData() {
             updateDashboardStats(response);
         }
     } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        handleApiError(error, 'دریافت آمار داشبورد');
     }
 }
 
@@ -181,51 +181,61 @@ async function fetchClients() {
             updateClientsTable(data.users);
         }
     } catch (error) {
-        console.error('Error fetching clients:', error);
+        handleApiError(error, 'دریافت لیست کاربران');
     }
 }
 
 // به‌روزرسانی جدول کاربران
 function updateClientsTable(clients) {
-    const tbody = document.getElementById('clientsTableBody');
-    tbody.innerHTML = '';
-    
-    if (!clients || clients.length === 0) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td colspan="5" style="text-align: center;">هیچ کاربری یافت نشد</td>
-        `;
-        tbody.appendChild(row);
-        return;
+  const tbody = document.getElementById('clientsTableBody');
+  tbody.innerHTML = '';
+  
+  if (!clients || clients.length === 0) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td colspan="5" style="text-align: center;">هیچ کاربری یافت نشد</td>
+    `;
+    tbody.appendChild(row);
+    return;
+  }
+  
+  clients.forEach(client => {
+    // بررسی وضعیت واقعی کاربر
+    let displayStatus = client.status;
+    if (client.status === 'active' && client.expiryDate) {
+      const now = new Date();
+      const expiryDate = new Date(client.expiryDate);
+      if (now > expiryDate) {
+        displayStatus = 'expired';
+      }
     }
     
-    clients.forEach(client => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${client.username || '-'}</td>
-            <td>${client.protocol || '-'}</td>
-            <td>${client.expiryDate || 'نامحدود'}</td>
-            <td>
-                <span class="status-badge status-${client.status || 'inactive'}">
-                    ${client.status === 'active' ? 'فعال' : 'غیرفعال'}
-                </span>
-            </td>
-            <td>
-                <div class="action-buttons">
-                    <button class="action-btn copy" onclick="copyClientConfig('${client.id}')" title="کپی کانفیگ">
-                        <i class="fas fa-copy"></i>
-                    </button>
-                    <button class="action-btn qr" onclick="showQRCode('${client.id}')" title="نمایش QR کد">
-                        <i class="fas fa-qrcode"></i>
-                    </button>
-                    <button class="action-btn delete" onclick="deleteClient('${client.id}')" title="حذف کاربر">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${client.username || '-'}</td>
+      <td>${client.protocol || '-'}</td>
+      <td>${client.expiryDate || 'نامحدود'}</td>
+      <td>
+        <span class="status-badge status-${displayStatus || 'inactive'}">
+          ${displayStatus === 'active' ? 'فعال' : displayStatus === 'expired' ? 'منقضی شده' : 'غیرفعال'}
+        </span>
+      </td>
+      <td>
+        <div class="action-buttons">
+          <button class="action-btn copy" onclick="copyClientConfig('${client.id}')" title="کپی کانفیگ">
+            <i class="fas fa-copy"></i>
+          </button>
+          <button class="action-btn qr" onclick="showQRCode('${client.id}')" title="نمایش QR کد">
+            <i class="fas fa-qrcode"></i>
+          </button>
+          <button class="action-btn delete" onclick="deleteClient('${client.id}')" title="حذف کاربر">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
 }
 
 // دریافت لیست اینباندها
@@ -238,7 +248,7 @@ async function fetchInbounds() {
             updateInboundsTable(data.inbounds);
         }
     } catch (error) {
-        console.error('Error fetching inbounds:', error);
+        handleApiError(error, 'دریافت لیست اینباندها');
     }
 }
 
@@ -294,7 +304,7 @@ async function createClient(clientData) {
         fetchDashboardData();
         showNotification('کاربر با موفقیت ایجاد شد', 'success');
     } catch (error) {
-        console.error('Error creating client:', error);
+        handleApiError(error, 'ایجاد کاربر جدید');
     }
 }
 
@@ -311,7 +321,7 @@ async function createInbound(inboundData) {
         fetchDashboardData();
         showNotification('اینباند با موفقیت ایجاد شد', 'success');
     } catch (error) {
-        console.error('Error creating inbound:', error);
+        handleApiError(error, 'ایجاد اینباند جدید');
     }
 }
 
@@ -326,7 +336,7 @@ async function updateSettings(settingsData) {
         
         showNotification('تنظیمات با موفقیت ذخیره شد', 'success');
     } catch (error) {
-        console.error('Error updating settings:', error);
+        handleApiError(error, 'به‌روزرسانی تنظیمات');
     }
 }
 
@@ -361,8 +371,7 @@ async function copyClientConfig(clientId) {
             showNotification('خطا در دریافت لینک اشتراک', 'error');
         }
     } catch (error) {
-        console.error('Error copying config:', error);
-        showNotification('خطا در دریافت لینک اشتراک', 'error');
+        handleApiError(error, 'کپی کانفیگ کاربر');
     }
 }
 
@@ -427,8 +436,7 @@ async function showQRCode(clientId) {
             showNotification('خطا در دریافت لینک اشتراک', 'error');
         }
     } catch (error) {
-        console.error('Error generating QR:', error);
-        showNotification('خطا در تولید QR کد: ' + error.message, 'error');
+        handleApiError(error, 'نمایش QR کد');
     }
 }
 
@@ -510,7 +518,7 @@ async function deleteClient(clientId) {
             fetchDashboardData();
             showNotification('کاربر با موفقیت حذف شد', 'success');
         } catch (error) {
-            console.error('Error deleting client:', error);
+            handleApiError(error, 'حذف کاربر');
         }
     }
 }
@@ -528,7 +536,7 @@ async function deleteInbound(inboundId) {
             fetchDashboardData();
             showNotification('اینباند با موفقیت حذف شد', 'success');
         } catch (error) {
-            console.error('Error deleting inbound:', error);
+            handleApiError(error, 'حذف اینباند');
         }
     }
 }
@@ -573,7 +581,7 @@ function showNotification(message, type = 'info') {
 // تابع عمومی برای درخواست‌های API
 async function makeApiRequest(url, options = {}) {
     const workerUrl = localStorage.getItem('workerUrl');
-    const token = sessionStorage.getItem('token'); // استفاده از sessionStorage به جای localStorage
+    const token = window.PASSAGE_TOKEN; // استفاده از توکن در حافظه
     
     if (!workerUrl || !token) {
         window.location.href = 'index.html';
@@ -599,7 +607,7 @@ async function makeApiRequest(url, options = {}) {
         if (response.status === 401) {
             // توکن منقضی شده
             localStorage.clear();
-            sessionStorage.clear(); // پاک کردن sessionStorage نیز ضروری است
+            delete window.PASSAGE_TOKEN; // حذف توکن از حافظه
             window.location.href = 'index.html';
             return;
         }
