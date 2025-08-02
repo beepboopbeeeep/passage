@@ -338,8 +338,20 @@ async function copyClientConfig(clientId) {
         const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
         if (response) {
+            // بررسی اینکه آیا response یک رشته است یا یک آبجکت
+            let configString;
+            if (typeof response === 'string') {
+                configString = response;
+            } else if (typeof response === 'object') {
+                // اگر response یک آبجکت باشد، تبدیل به رشته
+                configString = JSON.stringify(response);
+            } else {
+                showNotification('خطا در دریافت لینک اشتراک: فرمت داده ناشناخته', 'error');
+                return;
+            }
+            
             // کپی لینک اشتراک مستقیم
-            navigator.clipboard.writeText(response).then(() => {
+            navigator.clipboard.writeText(configString).then(() => {
                 showNotification('لینک اشتراک با موفقیت کپی شد', 'success');
             }).catch(err => {
                 console.error('Copy error:', err);
@@ -362,6 +374,18 @@ async function showQRCode(clientId) {
         const response = await makeApiRequest('/api/subscription/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
         
         if (response) {
+            // بررسی اینکه آیا response یک رشته است یا یک آبجکت
+            let configString;
+            if (typeof response === 'string') {
+                configString = response;
+            } else if (typeof response === 'object') {
+                // اگر response یک آبجکت باشد، تبدیل به رشته
+                configString = JSON.stringify(response);
+            } else {
+                showNotification('خطا در دریافت لینک اشتراک: فرمت داده ناشناخته', 'error');
+                return;
+            }
+            
             // ایجاد مودال QR کد
             const qrModal = document.createElement('div');
             qrModal.className = 'modal active';
@@ -374,9 +398,9 @@ async function showQRCode(clientId) {
                     <div class="modal-body" style="text-align: center;">
                         <div id="qrcode" style="margin: 20px auto;"></div>
                         <div class="config-text" style="word-break: break-all; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-top: 10px;">
-                            ${response}
+                            ${configString}
                         </div>
-                        <button class="submit-btn" onclick="copyConfigToClipboard('${response.replace(/'/g, "\\'")}')">
+                        <button class="submit-btn" onclick="copyConfigToClipboard('${configString.replace(/'/g, "\\'")}')">
                             <i class="fas fa-copy"></i> کپی کانفیگ
                         </button>
                     </div>
@@ -387,7 +411,7 @@ async function showQRCode(clientId) {
             
             // تولید QR کد
             new QRCode(document.getElementById("qrcode"), {
-                text: response,
+                text: configString,
                 width: 256,
                 height: 256,
                 colorDark: "#000000",
@@ -404,7 +428,7 @@ async function showQRCode(clientId) {
         }
     } catch (error) {
         console.error('Error generating QR:', error);
-        showNotification('خطا در تولید QR کد', 'error');
+        showNotification('خطا در تولید QR کد: ' + error.message, 'error');
     }
 }
 
@@ -590,7 +614,14 @@ async function makeApiRequest(url, options = {}) {
             return null;
         }
         
-        return JSON.parse(text);
+        // بررسی اینکه آیا پاسخ یک JSON معتبر است یا نه
+        try {
+            return JSON.parse(text);
+        } catch (jsonError) {
+            // اگر تجزیه JSON ناموفق بود، خود متن را برگردان
+            console.warn('Response is not valid JSON:', text);
+            return text;
+        }
     } catch (error) {
         console.error('API request failed:', error);
         if (error.name === 'AbortError') {

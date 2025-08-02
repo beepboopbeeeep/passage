@@ -502,6 +502,7 @@ async function handleGetSubscription(request, clientId) {
       }
     });
   } catch (error) {
+    console.error('Error generating subscription:', error);
     return new Response(JSON.stringify({ error: 'Failed to generate subscription', message: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
