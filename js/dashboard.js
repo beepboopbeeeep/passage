@@ -1,3 +1,4 @@
+// js/dashboard.js
 document.addEventListener('DOMContentLoaded', function() {
     // دریافت اطلاعات از API
     fetchDashboardData();
@@ -397,13 +398,34 @@ async function showQRCode(clientId) {
 function generateConfigString(config) {
     switch (config.v) {
         case "2": // VLESS/VMESS
-            return `${config.ps}=${config.add}:${config.port}?path=${config.path}&security=${config.tls}&host=${config.host}&type=${config.net}&id=${config.id}#${encodeURIComponent(config.ps)}`;
+            if (config.ps && config.ps.startsWith("Passage-vmess")) {
+                // VMess config
+                const vmessConfig = {
+                    v: "2",
+                    ps: config.ps,
+                    add: config.add,
+                    port: config.port,
+                    id: config.id,
+                    aid: config.aid,
+                    net: config.net,
+                    type: config.type,
+                    host: config.host,
+                    path: config.path,
+                    tls: config.tls,
+                    sni: config.sni
+                };
+                return `vmess://${btoa(JSON.stringify(vmessConfig))}`;
+            } else {
+                // VLESS config
+                return `vless://${config.id}@${config.add}:${config.port}?encryption=none&security=${config.tls}&type=${config.net}&host=${config.host}&path=${encodeURIComponent(config.path)}&sni=${config.sni}#${encodeURIComponent(config.ps)}`;
+            }
         
         case "trojan": // Trojan
-            return `trojan://${config.password}@${config.sni}:443?path=${config.path}&security=${config.tls}&host=${config.host}&type=${config.type}#${encodeURIComponent(config.ps)}`;
+            return `trojan://${config.password}@${config.sni}:443?security=${config.tls}&type=${config.type}&host=${config.host}&path=${encodeURIComponent(config.path)}#${encodeURIComponent(config.ps)}`;
         
         case "ss": // Shadowsocks
-            return `ss://${btoa(config.method + ':' + config.password)}@${config.server}:${config.server_port}?plugin=${encodeURIComponent(config.plugin + ';' + JSON.stringify(config['plugin-opts']))}#${encodeURIComponent(config.ps)}`;
+            const ssUri = `${config.method}:${config.password}@${config.server}:${config.server_port}`;
+            return `ss://${btoa(ssUri)}#${encodeURIComponent(config.ps)}`;
         
         default:
             return JSON.stringify(config, null, 2);
