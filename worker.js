@@ -3,11 +3,11 @@
  */
 
 // متغیرهای عمومی
-let corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // بعداً با مقدار مناسب جایگزین می‌شود
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Max-Age': '86400' // 24 ساعت کش Preflight
+  'Access-Control-Max-Age': '86400'
 };
 
 /**
@@ -23,13 +23,6 @@ addEventListener('fetch', event => {
 async function handleRequest(request) {
   const url = new URL(request.url);
   const path = url.pathname;
-  
-  // تنظیم CORS بر اساس منبع درخواست
-  const origin = request.headers.get('Origin');
-  // در محیط واقعی، این مقدار باید با دامنه معتبر جایگزین شود
-  const allowedOrigin = origin && (origin.endsWith('.workers.dev') || origin.includes('localhost')) ? origin : '';
-  
-  corsHeaders['Access-Control-Allow-Origin'] = allowedOrigin;
   
   // مدیریت Preflight CORS
   if (request.method === 'OPTIONS') {
@@ -565,23 +558,6 @@ async function handleCreateInbound(request) {
 }
 
 /**
- * تعیین مسیر بر اساس پروتکل و شبکه
- */
-function getPathByProtocol(protocol, network) {
-  switch (protocol) {
-    case 'vless':
-    case 'vmess':
-      return network === 'ws' ? '/vless-ws' : '/vless';
-    case 'trojan':
-      return network === 'ws' ? '/trojan-ws' : '/trojan';
-    case 'shadowsocks':
-      return network === 'ws' ? '/ss-ws' : '/ss';
-    default:
-      return '/';
-  }
-}
-
-/**
  * حذف اینباند
  */
 async function handleDeleteInbound(request, inboundId) {
@@ -799,7 +775,10 @@ async function generateSubscription(clientId, request) {
   try {
     const config = await generateUserConfig(clientId, request);
     if (!config) {
-      return new Response('User not found', { status: 404 });
+      return new Response('User not found', { 
+        status: 404,
+        headers: corsHeaders
+      });
     }
     
     // کدگذاری Base64
@@ -808,11 +787,31 @@ async function generateSubscription(clientId, request) {
     return new Response(encodedConfig, {
       headers: {
         'Content-Type': 'text/plain',
-        'Access-Control-Allow-Origin': '*'
+        ...corsHeaders
       }
     });
   } catch (error) {
-    return new Response('Failed to generate subscription', { status: 500 });
+    return new Response('Failed to generate subscription', { 
+      status: 500,
+      headers: corsHeaders
+    });
+  }
+}
+
+/**
+ * تعیین مسیر بر اساس پروتکل و شبکه
+ */
+function getPathByProtocol(protocol, network) {
+  switch (protocol) {
+    case 'vless':
+    case 'vmess':
+      return network === 'ws' ? '/vless-ws' : '/vless';
+    case 'trojan':
+      return network === 'ws' ? '/trojan-ws' : '/trojan';
+    case 'shadowsocks':
+      return network === 'ws' ? '/ss-ws' : '/ss';
+    default:
+      return '/';
   }
 }
 
