@@ -6,21 +6,255 @@ const corsHeaders = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
 // توابع کمکی
 function generateId() {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
+
 function formatDate(date) {
     return date.toISOString().split('T')[0];
 }
+
+// Function to consistently extract worker URL
+function getWorkerUrl(request) {
+    const host = request.headers.get('Host');
+    const url = new URL(request.url);
+    return `${url.protocol}//${host}`;
+}
+
+// Check if user has exceeded traffic limit
+function isUserExceededTrafficLimit(user) {
+    if (!user.traffic_limit) return false; // No limit set
+    const trafficUsedGB = user.traffic_used / (1024 * 1024 * 1024);
+    return trafficUsedGB >= user.traffic_limit;
+}
+
+// Check if user account is expired
+function isUserExpired(user) {
+    if (!user.expiry_date) return false; // No expiry date set
+    const expiryDate = new Date(user.expiry_date);
+    const currentDate = new Date();
+    return currentDate > expiryDate;
+}
+
+// Check if user account is active
+function isUserActive(user) {
+    if (user.status !== 'active') return false;
+    if (isUserExpired(user)) return false;
+    if (isUserExceededTrafficLimit(user)) return false;
+    return true;
+}
+
+// تولید کانفیگ VLESS
+function generateVLESSConfig(workerUrl, user) {
+    return {
+        v: "2",
+        ps: `Passage-${user.username}`,
+        add: workerUrl.replace('https://', '').replace('http://', ''),
+        port: user.port || 443,
+        id: user.uuid || generateId(),
+        aid: 0,
+        net: "ws",
+        type: "none",
+        host: workerUrl.replace('https://', '').replace('http://', ''),
+        path: `/vless/${user.id}`,
+        tls: "tls",
+        sni: workerUrl.replace('https://', '').replace('http://', ''),
+        fp: "chrome"
+    };
+}
+
+// تولید کانفیگ VMESS
+function generateVMESSConfig(workerUrl, user) {
+    return {
+        v: "2",
+        ps: `Passage-${user.username}`,
+        add: workerUrl.replace('https://', '').replace('http://', ''),
+        port: user.port || 443,
+        id: user.uuid || generateId(),
+        aid: 0,
+        net: "ws",
+        type: "none",
+        host: workerUrl.replace('https://', '').replace('http://', ''),
+        path: `/vmess/${user.id}`,
+        tls: "tls",
+        sni: workerUrl.replace('https://', '').replace('http://', '')
+    };
+}
+
+// تولید کانفیگ Trojan
+function generateTrojanConfig(workerUrl, user) {
+    return {
+        password: user.password || generateId(),
+        sni: workerUrl.replace('https://', '').replace('http://', ''),
+        type: "ws",
+        host: workerUrl.replace('https://', '').replace('http://', ''),
+        path: `/trojan/${user.id}`,
+        tls: "tls"
+    };
+}
+
+// تولید کانفیگ Shadowsocks
+function generateShadowsocksConfig(workerUrl, user) {
+    return {
+        server: workerUrl.replace('https://', '').replace('http://', ''),
+        server_port: user.port || 443,
+        password: user.password || generateId(),
+        method: user.method || "chacha20-ietf-poly1305",
+        plugin: "v2ray-plugin",
+        "plugin-opts": {
+            "mode": "websocket",
+            "path": `/shadowsocks/${user.id}`,
+            "tls": "tls",
+            "host": workerUrl.replace('https://', '').replace('http://', '')
+        }
+    };
+}
+
+// Handle WebSocket upgrade for VLESS
+async function handleVLESSWebSocket(request, userId) {
+    const workerUrl = getWorkerUrl(request);
+    
+    // Get user data
+    const userKey = `user_${workerUrl}_${userId}`;
+    const userData = await KV.get(userKey);
+    if (!userData) {
+        return new Response('User not found', { status: 404 });
+    }
+    
+    const user = JSON.parse(userData);
+    
+    // Check if user is active
+    if (!isUserActive(user)) {
+        return new Response('User account is not active', { status: 403 });
+    }
+    
+    // Upgrade to WebSocket
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (!upgradeHeader || upgradeHeader !== 'websocket') {
+        return new Response('Expected WebSocket upgrade', { status: 426 });
+    }
+    
+    const webSocketPair = new WebSocketPair();
+    const [client, server] = Object.values(webSocketPair);
+    
+    // Handle WebSocket connection
+    server.accept();
+    
+    // Create a mock response (in a real implementation, this would connect to actual destination)
+    server.addEventListener('message', async (event) => {
+        // In a real implementation, we would process the VLESS protocol here
+        // For now, we'll just echo back a simple response
+        try {
+            // Update traffic stats
+            user.traffic_used = (user.traffic_used || 0) + event.data.length;
+            await KV.put(userKey, JSON.stringify(user));
+            
+            // Echo the message back
+            server.send(event.data);
+        } catch (error) {
+            server.close(1011, 'Internal server error');
+        }
+    });
+    
+    server.addEventListener('close', () => {
+        console.log('WebSocket closed');
+    });
+    
+    server.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        server.close(1011, 'Internal server error');
+    });
+    
+    return new Response(null, {
+        status: 101,
+        webSocket: client,
+    });
+}
+
+// Handle WebSocket upgrade for VMess
+async function handleVMessWebSocket(request, userId) {
+    const workerUrl = getWorkerUrl(request);
+    
+    // Get user data
+    const userKey = `user_${workerUrl}_${userId}`;
+    const userData = await KV.get(userKey);
+    if (!userData) {
+        return new Response('User not found', { status: 404 });
+    }
+    
+    const user = JSON.parse(userData);
+    
+    // Check if user is active
+    if (!isUserActive(user)) {
+        return new Response('User account is not active', { status: 403 });
+    }
+    
+    // Upgrade to WebSocket
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (!upgradeHeader || upgradeHeader !== 'websocket') {
+        return new Response('Expected WebSocket upgrade', { status: 426 });
+    }
+    
+    const webSocketPair = new WebSocketPair();
+    const [client, server] = Object.values(webSocketPair);
+    
+    // Handle WebSocket connection
+    server.accept();
+    
+    // Create a mock response (in a real implementation, this would connect to actual destination)
+    server.addEventListener('message', async (event) => {
+        // In a real implementation, we would process the VMess protocol here
+        // For now, we'll just echo back a simple response
+        try {
+            // Update traffic stats
+            user.traffic_used = (user.traffic_used || 0) + event.data.length;
+            await KV.put(userKey, JSON.stringify(user));
+            
+            // Echo the message back
+            server.send(event.data);
+        } catch (error) {
+            server.close(1011, 'Internal server error');
+        }
+    });
+    
+    server.addEventListener('close', () => {
+        console.log('WebSocket closed');
+    });
+    
+    server.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        server.close(1011, 'Internal server error');
+    });
+    
+    return new Response(null, {
+        status: 101,
+        webSocket: client,
+    });
+}
+
 // مدیریت درخواست‌ها
 async function handleRequest(request) {
     const url = new URL(request.url);
     const method = request.method;
+    const path = url.pathname;
     
     // مدیریت درخواست‌های OPTIONS
     if (method === 'OPTIONS') {
         return new Response(null, { headers: corsHeaders });
+    }
+    
+    // Handle WebSocket connections for VLESS
+    if (path.startsWith('/vless/')) {
+        const userId = path.split('/')[2];
+        return handleVLESSWebSocket(request, userId);
+    }
+    
+    // Handle WebSocket connections for VMess
+    if (path.startsWith('/vmess/')) {
+        const userId = path.split('/')[2];
+        return handleVMessWebSocket(request, userId);
     }
     
     // مسیرهای API
@@ -51,13 +285,6 @@ async function handleRequest(request) {
     } else {
         return new Response('Not Found', { status: 404, headers: corsHeaders });
     }
-}
-
-// Function to consistently extract worker URL
-function getWorkerUrl(request) {
-    const host = request.headers.get('Host');
-    const url = new URL(request.url);
-    return `${url.protocol}//${host}`;
 }
 
 // ورود کاربر
@@ -111,6 +338,7 @@ async function handleLogin(request) {
         });
     }
 }
+
 // دریافت لیست کاربران
 async function handleGetUsers(request) {
     try {
@@ -159,6 +387,7 @@ async function handleGetUsers(request) {
         });
     }
 }
+
 // ایجاد کاربر جدید
 async function handleCreateUser(request) {
     try {
@@ -215,6 +444,7 @@ async function handleCreateUser(request) {
         });
     }
 }
+
 // به‌روزرسانی کاربر
 async function handleUpdateUser(request) {
     try {
@@ -273,6 +503,7 @@ async function handleUpdateUser(request) {
         });
     }
 }
+
 // حذف کاربر
 async function handleDeleteUser(request) {
     try {
@@ -320,6 +551,7 @@ async function handleDeleteUser(request) {
         });
     }
 }
+
 // دریافت لیست اینباندها
 async function handleGetInbounds(request) {
     try {
@@ -358,6 +590,7 @@ async function handleGetInbounds(request) {
         });
     }
 }
+
 // ایجاد اینباند جدید
 async function handleCreateInbound(request) {
     try {
@@ -412,6 +645,7 @@ async function handleCreateInbound(request) {
         });
     }
 }
+
 // به‌روزرسانی اینباند
 async function handleUpdateInbound(request) {
     try {
@@ -465,6 +699,7 @@ async function handleUpdateInbound(request) {
         });
     }
 }
+
 // حذف اینباند
 async function handleDeleteInbound(request) {
     try {
@@ -512,6 +747,7 @@ async function handleDeleteInbound(request) {
         });
     }
 }
+
 // دریافت آمار ترافیک
 async function handleGetStats(request) {
     try {
@@ -552,6 +788,7 @@ async function handleGetStats(request) {
         });
     }
 }
+
 // تولید کانفیگ
 async function handleGenerateConfig(request) {
     try {
@@ -629,88 +866,6 @@ async function handleGenerateConfig(request) {
         });
     }
 }
-// توابع تولید کانفیگ
-function generateVLESSConfig(workerUrl, user) {
-    return {
-        v: "2",
-        ps: `Passage-${user.username}`,
-        add: workerUrl,
-        port: user.port || 443,
-        id: user.uuid || generateId(),
-        aid: 0,
-        net: "ws",
-        type: "none",
-        host: workerUrl,
-        path: "/vless",
-        tls: "tls",
-        sni: workerUrl,
-        fp: "chrome"
-    };
-}
-function generateVMESSConfig(workerUrl, user) {
-    return {
-        v: "2",
-        ps: `Passage-${user.username}`,
-        add: workerUrl,
-        port: user.port || 443,
-        id: user.uuid || generateId(),
-        aid: 0,
-        net: "ws",
-        type: "none",
-        host: workerUrl,
-        path: "/vmess",
-        tls: "tls",
-        sni: workerUrl
-    };
-}
-function generateTrojanConfig(workerUrl, user) {
-    return {
-        password: user.password || generateId(),
-        sni: workerUrl,
-        type: "ws",
-        host: workerUrl,
-        path: "/trojan",
-        tls: "tls"
-    };
-}
-function generateShadowsocksConfig(workerUrl, user) {
-    return {
-        server: workerUrl,
-        server_port: user.port || 443,
-        password: user.password || generateId(),
-        method: user.method || "chacha20-ietf-poly1305",
-        plugin: "v2ray-plugin",
-        "plugin-opts": {
-            "mode": "websocket",
-            "path": "/shadowsocks",
-            "tls": "tls",
-            "host": workerUrl
-        }
-    };
-}
-
-// Check if user has exceeded traffic limit
-function isUserExceededTrafficLimit(user) {
-    if (!user.traffic_limit) return false; // No limit set
-    const trafficUsedGB = user.traffic_used / (1024 * 1024 * 1024);
-    return trafficUsedGB >= user.traffic_limit;
-}
-
-// Check if user account is expired
-function isUserExpired(user) {
-    if (!user.expiry_date) return false; // No expiry date set
-    const expiryDate = new Date(user.expiry_date);
-    const currentDate = new Date();
-    return currentDate > expiryDate;
-}
-
-// Check if user account is active
-function isUserActive(user) {
-    if (user.status !== 'active') return false;
-    if (isUserExpired(user)) return false;
-    if (isUserExceededTrafficLimit(user)) return false;
-    return true;
-}
 
 // به‌روزرسانی تنظیمات
 async function handleUpdateSettings(request) {
@@ -752,6 +907,7 @@ async function handleUpdateSettings(request) {
         });
     }
 }
+
 // اجرای ورکر
 addEventListener('fetch', event => {
     event.respondWith(handleRequest(event.request));
