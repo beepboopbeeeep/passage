@@ -150,7 +150,7 @@ async function fetchDashboardData() {
         }
         
         // دریافت آمار کلی
-        const response = await makeApiRequest('/api/stats?workerUrl=' + encodeURIComponent(workerUrl));
+        const response = await makeApiRequest('/api/stats');
         
         if (response) {
             updateDashboardStats(response);
@@ -169,7 +169,7 @@ function updateDashboardStats(data) {
 async function fetchClients() {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/users?workerUrl=' + encodeURIComponent(workerUrl));
+        const data = await makeApiRequest('/api/users');
         
         if (data) {
             updateClientsTable(data.users);
@@ -215,7 +215,7 @@ function updateClientsTable(clients) {
 async function fetchInbounds() {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/inbounds?workerUrl=' + encodeURIComponent(workerUrl));
+        const data = await makeApiRequest('/api/inbounds');
         
         if (data) {
             updateInboundsTable(data.inbounds);
@@ -260,7 +260,7 @@ function updateInboundsTable(inbounds) {
 async function createClient(clientData) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        await makeApiRequest('/api/users?workerUrl=' + encodeURIComponent(workerUrl), {
+        await makeApiRequest('/api/users', {
             method: 'POST',
             body: JSON.stringify(clientData)
         });
@@ -277,7 +277,7 @@ async function createClient(clientData) {
 async function createInbound(inboundData) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        await makeApiRequest('/api/inbounds?workerUrl=' + encodeURIComponent(workerUrl), {
+        await makeApiRequest('/api/inbounds', {
             method: 'POST',
             body: JSON.stringify(inboundData)
         });
@@ -294,7 +294,7 @@ async function createInbound(inboundData) {
 async function updateSettings(settingsData) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        await makeApiRequest('/api/settings?workerUrl=' + encodeURIComponent(workerUrl), {
+        await makeApiRequest('/api/settings', {
             method: 'PUT',
             body: JSON.stringify(settingsData)
         });
@@ -309,7 +309,7 @@ async function updateSettings(settingsData) {
 async function copyClientConfig(clientId) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/config/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl));
+        const data = await makeApiRequest('/api/config/' + clientId);
         
         if (data) {
             const config = JSON.stringify(data.config, null, 2);
@@ -332,7 +332,7 @@ async function deleteClient(clientId) {
     if (confirm('آیا از حذف این کاربر مطمئن هستید؟')) {
         try {
             const workerUrl = localStorage.getItem('workerUrl');
-            await makeApiRequest('/api/users/' + clientId + '?workerUrl=' + encodeURIComponent(workerUrl), {
+            await makeApiRequest('/api/users/' + clientId, {
                 method: 'DELETE'
             });
             
@@ -350,7 +350,7 @@ async function deleteInbound(inboundId) {
     if (confirm('آیا از حذف این اینباند مطمئن هستید؟')) {
         try {
             const workerUrl = localStorage.getItem('workerUrl');
-            await makeApiRequest('/api/inbounds/' + inboundId + '?workerUrl=' + encodeURIComponent(workerUrl), {
+            await makeApiRequest('/api/inbounds/' + inboundId, {
                 method: 'DELETE'
             });
             
@@ -402,6 +402,7 @@ async function makeApiRequest(url, options = {}) {
     const workerUrl = localStorage.getItem('workerUrl');
     const token = localStorage.getItem('token');
     
+    // Redirect to login if no worker URL or token
     if (!workerUrl || !token) {
         window.location.href = 'index.html';
         return;
@@ -411,7 +412,10 @@ async function makeApiRequest(url, options = {}) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
-        const response = await fetch(`${workerUrl}${url}`, {
+        // Construct full URL with worker URL and query parameter
+        const fullUrl = `${workerUrl}${url}${url.includes('?') ? '&' : '?'}workerUrl=${encodeURIComponent(workerUrl)}`;
+        
+        const response = await fetch(fullUrl, {
             ...options,
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -423,9 +427,9 @@ async function makeApiRequest(url, options = {}) {
         
         clearTimeout(timeoutId);
         
+        // If unauthorized, redirect to login
         if (response.status === 401) {
-            // توکن منقضی شده
-            localStorage.clear();
+            localStorage.removeItem('token');
             window.location.href = 'index.html';
             return;
         }

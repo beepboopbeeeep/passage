@@ -52,11 +52,19 @@ async function handleRequest(request) {
         return new Response('Not Found', { status: 404, headers: corsHeaders });
     }
 }
+
+// Function to consistently extract worker URL
+function getWorkerUrl(request) {
+    const host = request.headers.get('Host');
+    const url = new URL(request.url);
+    return `${url.protocol}//${host}`;
+}
+
 // ورود کاربر
 async function handleLogin(request) {
     try {
         const { username, password } = await request.json();
-        const workerUrl = request.url; // We'll use the request URL to identify the worker
+        const workerUrl = getWorkerUrl(request);
         
         if (!username || !password) {
             return new Response(JSON.stringify({ error: 'Username and password are required' }), { 
@@ -115,7 +123,7 @@ async function handleGetUsers(request) {
         }
         
         const token = authHeader.replace('Bearer ', '');
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         
         // بررسی توکن
         const storedToken = await KV.get(`token_${workerUrl}`);
@@ -153,7 +161,7 @@ async function handleCreateUser(request) {
         }
         
         const token = authHeader.replace('Bearer ', '');
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         
         // بررسی توکن
         const storedToken = await KV.get(`token_${workerUrl}`);
@@ -209,7 +217,7 @@ async function handleUpdateUser(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const userId = url.pathname.split('/').pop();
         
         // بررسی توکن
@@ -262,7 +270,7 @@ async function handleDeleteUser(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const userId = url.pathname.split('/').pop();
         
         // بررسی توکن
@@ -308,7 +316,7 @@ async function handleGetInbounds(request) {
         }
         
         const token = authHeader.replace('Bearer ', '');
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         
         // بررسی توکن
         const storedToken = await KV.get(`token_${workerUrl}`);
@@ -346,7 +354,7 @@ async function handleCreateInbound(request) {
         }
         
         const token = authHeader.replace('Bearer ', '');
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         
         // بررسی توکن
         const storedToken = await KV.get(`token_${workerUrl}`);
@@ -401,7 +409,7 @@ async function handleUpdateInbound(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const inboundId = url.pathname.split('/').pop();
         
         // بررسی توکن
@@ -454,7 +462,7 @@ async function handleDeleteInbound(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const inboundId = url.pathname.split('/').pop();
         
         // بررسی توکن
@@ -501,7 +509,7 @@ async function handleGetStats(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const userId = url.searchParams.get('userId');
         
         // بررسی توکن
@@ -541,7 +549,7 @@ async function handleGenerateConfig(request) {
         
         const token = authHeader.replace('Bearer ', '');
         const url = new URL(request.url);
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         const userId = url.pathname.split('/').pop();
         
         // بررسی توکن
@@ -668,7 +676,7 @@ async function handleUpdateSettings(request) {
         }
         
         const token = authHeader.replace('Bearer ', '');
-        const workerUrl = request.url;
+        const workerUrl = getWorkerUrl(request);
         
         // بررسی توکن
         const storedToken = await KV.get(`token_${workerUrl}`);
