@@ -137,7 +137,17 @@ async function handleGetUsers(request) {
         // دریافت لیست کاربران
         const usersKey = `users_${workerUrl}`;
         const usersData = await KV.get(usersKey);
-        const users = usersData ? JSON.parse(usersData) : [];
+        const userIds = usersData ? JSON.parse(usersData) : [];
+        
+        // دریافت اطلاعات هر کاربر
+        const users = [];
+        for (const userId of userIds) {
+            const userKey = `user_${workerUrl}_${userId}`;
+            const userData = await KV.get(userKey);
+            if (userData) {
+                users.push(JSON.parse(userData));
+            }
+        }
         
         return new Response(JSON.stringify({ users }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -180,7 +190,8 @@ async function handleCreateUser(request) {
             id: userId,
             ...userData,
             createdAt: new Date().toISOString(),
-            trafficUsed: 0,
+            traffic_used: 0,
+            traffic_limit: userData.traffic_limit ? parseFloat(userData.traffic_limit) : null,
             status: userData.status || 'active'
         };
         
@@ -242,7 +253,12 @@ async function handleUpdateUser(request) {
         }
         
         const user = JSON.parse(userData);
-        const updatedUser = { ...user, ...updateData, updatedAt: new Date().toISOString() };
+        const updatedUser = { 
+            ...user, 
+            ...updateData, 
+            updatedAt: new Date().toISOString(),
+            traffic_limit: updateData.traffic_limit ? parseFloat(updateData.traffic_limit) : null
+        };
         
         // ذخیره کاربر به‌روز شده
         await KV.put(userKey, JSON.stringify(updatedUser));
@@ -573,6 +589,14 @@ async function handleGenerateConfig(request) {
         
         const user = JSON.parse(userData);
         
+        // Check if user is active
+        if (!isUserActive(user)) {
+            return new Response(JSON.stringify({ error: 'User account is not active' }), { 
+                status: 403, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            });
+        }
+        
         // تولید کانفیگ بر اساس پروتکل
         let config;
         switch (user.protocol) {
@@ -664,6 +688,30 @@ function generateShadowsocksConfig(workerUrl, user) {
         }
     };
 }
+
+// Check if user has exceeded traffic limit
+function isUserExceededTrafficLimit(user) {
+    if (!user.traffic_limit) return false; // No limit set
+    const trafficUsedGB = user.traffic_used / (1024 * 1024 * 1024);
+    return trafficUsedGB >= user.traffic_limit;
+}
+
+// Check if user account is expired
+function isUserExpired(user) {
+    if (!user.expiry_date) return false; // No expiry date set
+    const expiryDate = new Date(user.expiry_date);
+    const currentDate = new Date();
+    return currentDate > expiryDate;
+}
+
+// Check if user account is active
+function isUserActive(user) {
+    if (user.status !== 'active') return false;
+    if (isUserExpired(user)) return false;
+    if (isUserExceededTrafficLimit(user)) return false;
+    return true;
+}
+
 // به‌روزرسانی تنظیمات
 async function handleUpdateSettings(request) {
     try {

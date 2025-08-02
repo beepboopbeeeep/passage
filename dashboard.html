@@ -120,6 +120,15 @@
                             <div class="stat-label" data-i18n="active-connections">اتصالات فعال</div>
                         </div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="totalTraffic">0 GB</div>
+                            <div class="stat-label">ترافیک کل</div>
+                        </div>
+                    </div>
                 </div>
                 <!-- روزهای فعال‌سازی -->
                 <div class="activation-info">
@@ -138,10 +147,13 @@
             <div class="tab-content" id="clients-tab">
                 <div class="table-header">
                     <h3 data-i18n="clients">کاربران</h3>
-                    <button class="add-btn" id="addClientBtn">
-                        <i class="fas fa-plus"></i>
-                        <span data-i18n="add-client">افزودن کاربر</span>
-                    </button>
+                    <div>
+                        <input type="text" id="searchClients" placeholder="جستجو در کاربران..." class="form-control" style="display: inline-block; width: auto; margin-left: 10px;">
+                        <button class="add-btn" id="addClientBtn">
+                            <i class="fas fa-plus"></i>
+                            <span data-i18n="add-client">افزودن کاربر</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table class="data-table">
@@ -150,6 +162,8 @@
                                 <th data-i18n="username">نام کاربری</th>
                                 <th data-i18n="protocol">پروتکل</th>
                                 <th data-i18n="expiry-date">تاریخ انقضا</th>
+                                <th>ترافیک مصرف شده</th>
+                                <th>محدودیت ترافیک</th>
                                 <th data-i18n="status">وضعیت</th>
                                 <th data-i18n="actions">عملیات</th>
                             </tr>
@@ -164,10 +178,13 @@
             <div class="tab-content" id="inbounds-tab">
                 <div class="table-header">
                     <h3 data-i18n="inbounds">اینباندها</h3>
-                    <button class="add-btn" id="addInboundBtn">
-                        <i class="fas fa-plus"></i>
-                        <span data-i18n="add-inbound">افزودن اینباند</span>
-                    </button>
+                    <div>
+                        <input type="text" id="searchInbounds" placeholder="جستجو در اینباندها..." class="form-control" style="display: inline-block; width: auto; margin-left: 10px;">
+                        <button class="add-btn" id="addInboundBtn">
+                            <i class="fas fa-plus"></i>
+                            <span data-i18n="add-inbound">افزودن اینباند</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table class="data-table">
@@ -218,7 +235,7 @@
                     <div class="about-content">
                         <h3 data-i18n="about-passage">درباره Passage</h3>
                         <p data-i18n="about-desc">Passage یک پنل مدیریت قدرتمند برای کانفیگ‌های V2Ray روی Cloudflare Workers است.</p>
-                        <p data-i18n="developed-by">توسعه یافته توسط تیم Najidevs</p>
+                        <p data-i18ن="developed-by">توسعه یافته توسط تیم Najidevs</p>
                         <div class="github-preview">
                             <h4 data-i18n="github-projects">پروژه‌های ما در گیت‌هاب:</h4>
                             <iframe 
@@ -261,6 +278,10 @@
                     <div class="form-group">
                         <label data-i18n="expiry-date">تاریخ انقضا</label>
                         <input type="date" name="expiry_date">
+                    </div>
+                    <div class="form-group">
+                        <label>محدودیت ترافیک (GB)</label>
+                        <input type="number" name="traffic_limit" min="0" step="0.1" placeholder="0 برای نامحدود">
                     </div>
                     <div class="form-group">
                         <label data-i18n="status">وضعیت</label>
