@@ -1,4 +1,16 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // Base64 encoding function for browsers
+    function base64Encode(str) {
+        try {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(match, p1) {
+                return String.fromCharCode('0x' + p1);
+            }));
+        } catch (e) {
+            // Fallback for browsers that don't support btoa
+            return window.btoa ? window.btoa(str) : str;
+        }
+    }
+    
     // دریافت اطلاعات از API
     fetchDashboardData();
     
@@ -395,57 +407,31 @@ async function updateSettings(settingsData) {
 async function copyClientConfig(clientId) {
     try {
         const workerUrl = localStorage.getItem('workerUrl');
-        const data = await makeApiRequest('/api/config/' + clientId);
+        // First try to get URI format config
+        let data = null;
+        try {
+            data = await makeApiRequest('/api/config/' + clientId + '?format=uri');
+        } catch (uriError) {
+            // If URI format fails, try JSON format
+            data = await makeApiRequest('/api/config/' + clientId);
+        }
         
         if (data) {
-            // Format config based on protocol
-            let configUrl;
-            const clientData = data.config;
-            
-            switch (clientData.net || clientData.network) {
-                case 'ws':
-                    if (clientData.v === "2" && clientData.ps.startsWith('Passage-')) {
-                        // This is a VLESS or VMESS config
-                        if (clientData.ps.includes('VLESS')) {
-                            const vlessConfig = `vless://${clientData.id}@${clientData.add}:${clientData.port}?encryption=none&security=${clientData.tls}&sni=${clientData.sni}&type=${clientData.net}&host=${clientData.host}&path=${clientData.path}#${encodeURIComponent(clientData.ps)}`;
-                            configUrl = vlessConfig;
-                        } else {
-                            // VMess config
-                            const vmessConfig = btoa(JSON.stringify(clientData));
-                            configUrl = `vmess://${vmessConfig}`;
-                        }
-                    }
-                    break;
-                case 'tcp':
-                    // Handle Trojan or Shadowsocks
-                    if (clientData.password && clientData.type === 'tcp') {
-                        // Trojan
-                        const trojanConfig = `trojan://${clientData.password}@${clientData.sni}:${clientData.port}?security=${clientData.tls}&type=${clientData.type}&headerType=none#${encodeURIComponent(clientData.ps || 'Passage-Trojan')}`;
-                        configUrl = trojanConfig;
-                    }
-                    break;
-                default:
-                    // Default to JSON format
-                    configUrl = JSON.stringify(data.config, null, 2);
-            }
-            
-            if (!configUrl) {
-                // Fallback to JSON if we can't generate a standard URL
-                configUrl = JSON.stringify(data.config, null, 2);
+            let config;
+            if (typeof data === 'string') {
+                // URI format
+                config = data;
+            } else {
+                // JSON format
+                config = JSON.stringify(data.config, null, 2);
             }
             
             // کپی در کلیپ‌بورد
-            navigator.clipboard.writeText(configUrl).then(() => {
+            navigator.clipboard.writeText(config).then(() => {
                 showNotification('کانفیگ با موفقیت کپی شد', 'success');
             }).catch(err => {
-                // Fallback for copying
-                const textArea = document.createElement('textarea');
-                textArea.value = configUrl;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                showNotification('کانفیگ با موفقیت کپی شد', 'success');
+                showNotification('خطا در کپی کانفیگ', 'error');
+                console.error('Clipboard write failed:', err);
             });
         }
     } catch (error) {
@@ -747,15 +733,7 @@ async function makeApiRequest(url, options = {}) {
         const timeoutId = setTimeout(() => controller.abort(), 10000);
         
         // Construct full URL with worker URL
-        // For WebSocket paths, we need to make sure we're using the correct format
-        let fullUrl;
-        if (url.startsWith('/vless/') || url.startsWith('/vmess/') || url.startsWith('/trojan/') || url.startsWith('/shadowsocks/')) {
-            // WebSocket paths should be relative to the worker
-            fullUrl = `${workerUrl}${url}`;
-        } else {
-            // API paths
-            fullUrl = `${workerUrl}${url}`;
-        }
+        const fullUrl = `${workerUrl}${url}`;
         
         const response = await fetch(fullUrl, {
             ...options,
