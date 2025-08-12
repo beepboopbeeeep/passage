@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Researcher - V2Ray Config Collector</title>
+    <title>Active Configs - Researcher</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,33 +30,12 @@
 
     <main>
         <div class="container">
-            <section class="stats-section">
-                <div class="stat-card">
-                    <h3 id="total-configs-title">Total Configs</h3>
-                    <p id="total-configs-count">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3 id="today-configs-title">Today's Configs</h3>
-                    <p id="today-configs-count">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3 id="active-configs-title">Active Configs</h3>
-                    <p id="active-configs-count">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3 id="donated-configs-title">Donated Configs</h3>
-                    <p id="donated-configs-count">0</p>
-                </div>
-            </section>
-
             <section class="configs-section">
                 <div class="section-header">
-                    <h2 id="latest-configs-title">Latest Configurations</h2>
+                    <h2 id="active-configs-title">Active Configurations</h2>
                     <div class="header-actions">
-                        <button id="collect-btn" class="btn">Collect New Configs</button>
-                        <a href="today.html" id="today-configs-link" class="btn">Today's Configs</a>
-                        <a href="active.html" id="active-configs-link" class="btn">Active Configs</a>
-                        <a href="donated.html" id="donated-configs-link" class="btn">Donated Configs</a>
+                        <a href="index.html" id="back-to-home" class="btn">Back to Home</a>
+                        <button id="copy-active-sub" class="btn">Copy Subscription Link</button>
                     </div>
                 </div>
                 
@@ -96,5 +75,41 @@
     </footer>
 
     <script src="script.js"></script>
+    <script>
+        // Add active configs specific functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add event listener for copy subscription button
+            document.getElementById('copy-active-sub').addEventListener('click', function() {
+                const subLink = `${window.location.origin}/api/sub/${new Date().toISOString().split('T')[0]}/active`;
+                navigator.clipboard.writeText(subLink).then(() => {
+                    const originalText = this.textContent;
+                    this.textContent = document.documentElement.lang === 'fa' ? 'کپی شد!' : 'Copied!';
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                    }, 2000);
+                });
+            });
+            
+            // Load active configs
+            loadActiveConfigs();
+        });
+        
+        async function loadActiveConfigs() {
+            try {
+                const response = await fetch('/api/active');
+                if (!response.ok) throw new Error('Failed to load active configs');
+                
+                currentConfigs = await response.json();
+                renderConfigs(currentConfigs);
+            } catch (error) {
+                console.error('Error loading active configs:', error);
+                document.getElementById('configs-container').innerHTML = `
+                    <div class="loading">
+                        <p>Error loading active configurations. Please try again later.</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
 </body>
 </html>

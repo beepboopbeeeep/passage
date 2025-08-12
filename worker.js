@@ -1,1271 +1,645 @@
-// worker.js
-const KV = PASSAGE_KV; // متغیر محیطی که در کلادفلر تنظیم می‌شود
-// هدرهای CORS
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+// Cloudflare Worker for collecting and serving V2Ray configurations
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // Handle CORS
+    const allowedOrigins = [url.origin]; // Allow same origin by default
+    const origin = request.headers.get('Origin');
+    
+    const corsHeaders = {
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+    };
+
+    // If origin is allowed or it's a same-origin request, add specific origin
+    if (!origin || allowedOrigins.includes(origin)) {
+      corsHeaders['Access-Control-Allow-Origin'] = origin || url.origin;
+    } else {
+      // For other cases, use a more restrictive policy
+      corsHeaders['Access-Control-Allow-Origin'] = url.origin;
+    }
+
+    // Add security headers
+    corsHeaders['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; connect-src 'self';";
+    corsHeaders['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+    corsHeaders['X-Content-Type-Options'] = 'nosniff';
+    corsHeaders['X-Frame-Options'] = 'DENY';
+    corsHeaders['X-XSS-Protection'] = '1; mode=block';
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { 
+        headers: corsHeaders 
+      });
+    }
+
+    // Rate limiting for sensitive endpoints
+    if (path === '/api/collect' || path === '/api/cleanup' || path === '/api/donate') {
+      const clientIP = request.headers.get('CF-Connecting-IP');
+      
+      // Create a rate limiter key based on IP and endpoint
+      const rateLimitKey = `rate_limit:${clientIP}${path}`;
+      
+      // Get current count from KV
+      const currentCount = await env.COLLECT.get(rateLimitKey);
+      const count = currentCount ? parseInt(currentCount) + 1 : 1;
+      
+      // Set the value back with expiration (if not first request)
+      if (count > 1) {
+        if (count > 5) { // Limit to 5 requests per minute
+          return new Response(JSON.stringify({ error: 'Too many requests' }), {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      } else {
+        // First request, set expiration to 1 minute
+        await env.COLLECT.put(rateLimitKey, '1', { expirationTtl: 60 });
+      }
+      
+      // Update the count
+      await env.COLLECT.put(rateLimitKey, count.toString());
+    }
+
+    // API Routes
+    if (path === '/api/configs') {
+      return handleGetConfigs(env, corsHeaders);
+    } else if (path === '/api/today') {
+      return handleGetTodaysConfigs(env, corsHeaders);
+    } else if (path === '/api/collect') {
+      return handleCollectConfigs(env, corsHeaders);
+    } else if (path === '/api/active') {
+      return handleGetActiveConfigs(env, corsHeaders);
+    } else if (path === '/api/donated') {
+      return handleGetDonatedConfigs(env, corsHeaders);
+    } else if (path.startsWith('/api/sub/')) {
+      return handleSubscriptionLink(path, env, corsHeaders);
+    } else if (path.startsWith('/api/protocol/')) {
+      return handleProtocolFilter(path, env, corsHeaders);
+    } else if (path.startsWith('/api/location/')) {
+      return handleLocationFilter(path, env, corsHeaders);
+    } else if (path === '/api/configs/count') {
+      return handleGetConfigCount(env, corsHeaders);
+    } else if (path === '/api/cleanup') {
+      return handleCleanup(env, corsHeaders);
+    } else if (path === '/api/donate') {
+      return handleDonateConfig(request, env, corsHeaders);
+    }
+
+    return new Response('Not Found', { 
+      status: 404,
+      headers: corsHeaders 
+    });
+  }
 };
 
-// توابع کمکی
-function generateId() {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+// Handle getting latest 10 configs
+async function handleGetConfigs(env, corsHeaders) {
+  try {
+    // Try to get from cache first
+    const cacheKey = 'configs_latest';
+    const cached = await env.COLLECT.get(cacheKey);
+    if (cached) {
+      return new Response(cached, {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const keys = await env.COLLECT.list({ prefix: 'config:', limit: 10 });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        configs.push(JSON.parse(config));
+      }
+    }
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+    
+    // Cache for 5 minutes
+    const jsonResponse = JSON.stringify(configs);
+    await env.COLLECT.put(cacheKey, jsonResponse, { expirationTtl: 300 });
+
+    return new Response(jsonResponse, {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch configs' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-function formatDate(date) {
-    return date.toISOString().split('T')[0];
+
+// Handle getting today's configs
+async function handleGetTodaysConfigs(env, corsHeaders) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTimestamp = today.getTime();
+    
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        const configDate = new Date(configData.collectedAt);
+        configDate.setHours(0, 0, 0, 0);
+        
+        if (configDate.getTime() === todayTimestamp) {
+          configs.push(configData);
+        }
+      }
+    }
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    return new Response(JSON.stringify(configs), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch today\'s configs' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-// مدیریت درخواست‌ها
-async function handleRequest(request) {
-    const url = new URL(request.url);
-    const method = request.method;
-    
-    // مدیریت درخواست‌های OPTIONS
-    if (method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders });
-    }
-    
-    // مدیریت اتصالات WebSocket برای VLESS
-    if (url.pathname.startsWith('/vless/') && method === 'GET') {
-        const userId = url.pathname.split('/')[2];
-        if (userId) {
-            return handleVlessWebSocket(request, userId);
+
+// Handle getting active configs
+async function handleGetActiveConfigs(env, corsHeaders) {
+  try {
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        // Only include active configs (last checked within the last 3 hours)
+        const threeHoursAgo = Date.now() - (3 * 60 * 60 * 1000);
+        if (new Date(configData.lastChecked).getTime() > threeHoursAgo) {
+          configs.push(configData);
         }
+      }
     }
-    
-    // مدیریت اتصالات WebSocket برای VMess
-    if (url.pathname.startsWith('/vmess/') && method === 'GET') {
-        const userId = url.pathname.split('/')[2];
-        if (userId) {
-            return handleVmessWebSocket(request, userId);
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    return new Response(JSON.stringify(configs), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch active configs' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Handle getting donated configs
+async function handleGetDonatedConfigs(env, corsHeaders) {
+  try {
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        // Only include donated configs
+        if (configData.donated) {
+          configs.push(configData);
         }
+      }
     }
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    return new Response(JSON.stringify(configs), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch donated configs' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Handle subscription links
+async function handleSubscriptionLink(path, env, corsHeaders) {
+  try {
+    const pathParts = path.split('/');
+    const dateStr = pathParts[3]; // Extract date from path
+    const type = pathParts[4]; // Extract type (optional)
     
-    // مدیریت اتصالات WebSocket برای Trojan
-    if (url.pathname.startsWith('/trojan/') && method === 'GET') {
-        const userId = url.pathname.split('/')[2];
-        if (userId) {
-            return handleTrojanWebSocket(request, userId);
-        }
-    }
-    
-    // مدیریت اتصالات WebSocket برای Shadowsocks
-    if (url.pathname.startsWith('/shadowsocks/') && method === 'GET') {
-        const userId = url.pathname.split('/')[2];
-        if (userId) {
-            return handleShadowsocksWebSocket(request, userId);
-        }
-    }
-    
-    // مسیرهای API
-    if (url.pathname === '/api/login' && method === 'POST') {
-        return handleLogin(request);
-    } else if (url.pathname === '/api/users' && method === 'GET') {
-        return handleGetUsers(request);
-    } else if (url.pathname === '/api/users' && method === 'POST') {
-        return handleCreateUser(request);
-    } else if (url.pathname.startsWith('/api/users/') && method === 'PUT') {
-        return handleUpdateUser(request);
-    } else if (url.pathname.startsWith('/api/users/') && method === 'DELETE') {
-        return handleDeleteUser(request);
-    } else if (url.pathname === '/api/inbounds' && method === 'GET') {
-        return handleGetInbounds(request);
-    } else if (url.pathname === '/api/inbounds' && method === 'POST') {
-        return handleCreateInbound(request);
-    } else if (url.pathname.startsWith('/api/inbounds/') && method === 'PUT') {
-        return handleUpdateInbound(request);
-    } else if (url.pathname.startsWith('/api/inbounds/') && method === 'DELETE') {
-        return handleDeleteInbound(request);
-    } else if (url.pathname === '/api/stats' && method === 'GET') {
-        return handleGetStats(request);
-    } else if (url.pathname.startsWith('/api/config/') && method === 'GET') {
-        return handleGenerateConfig(request);
-    } else if (url.pathname === '/api/settings' && method === 'PUT') {
-        return handleUpdateSettings(request);
+    let keys;
+    if (type === 'active') {
+      // For active configs subscription
+      keys = await env.COLLECT.list({ prefix: 'config:' });
+    } else if (dateStr === 'donated') {
+      // For donated configs subscription
+      keys = await env.COLLECT.list({ prefix: 'config:' });
     } else {
-        return new Response('Not Found', { status: 404, headers: corsHeaders });
+      // For date-based subscription
+      keys = await env.COLLECT.list({ prefix: `config:${dateStr}` });
     }
-}
+    
+    const configs = [];
 
-// Function to consistently extract worker URL
-function getWorkerUrl(request) {
-    const host = request.headers.get('Host');
-    const url = new URL(request.url);
-    return `${url.protocol}//${host}`;
-}
-
-// ورود کاربر
-async function handleLogin(request) {
-    try {
-        const { username, password } = await request.json();
-        const workerUrl = getWorkerUrl(request);
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
         
-        if (!username || !password) {
-            return new Response(JSON.stringify({ error: 'Username and password are required' }), { 
-                status: 400, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // دریافت اطلاعات احراز هویت
-        const authKey = `auth_${workerUrl}`;
-        const authData = await KV.get(authKey);
-        
-        let auth;
-        if (!authData) {
-            // ایجاد کاربر پیش‌فرض اگر وجود نداشته باشد
-            auth = { username: 'admin', password: 'admin' };
-            await KV.put(authKey, JSON.stringify(auth));
+        if (type === 'active') {
+          // Only include active configs
+          const threeHoursAgo = Date.now() - (3 * 60 * 60 * 1000);
+          if (new Date(configData.lastChecked).getTime() > threeHoursAgo) {
+            configs.push(configData.raw);
+          }
+        } else if (dateStr === 'donated') {
+          // Only include donated configs
+          if (configData.donated) {
+            configs.push(configData.raw);
+          }
         } else {
-            auth = JSON.parse(authData);
+          // Date-based filtering
+          configs.push(configData.raw);
         }
-        
-        // بررسی اعتبار
-        if (auth.username === username && auth.password === password) {
-            const token = generateId();
-            await KV.put(`token_${workerUrl}`, token, { expirationTtl: 86400 }); // 24 ساعت
-            
-            return new Response(JSON.stringify({ 
-                success: true, 
-                token,
-                user: { username: auth.username }
-            }), { 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        } else {
-            return new Response(JSON.stringify({ error: 'Invalid credentials' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+      }
     }
+
+    const subscriptionContent = configs.join('\n');
+    const encodedContent = btoa(subscriptionContent);
+
+    return new Response(encodedContent, {
+      headers: { 
+        ...corsHeaders, 
+        'Content-Type': 'text/plain',
+        'Content-Disposition': 'inline; filename="subscribe.txt"'
+      }
+    });
+  } catch (error) {
+    return new Response('Subscription not found', { status: 404 });
+  }
 }
-// دریافت لیست کاربران
-async function handleGetUsers(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
+
+// Handle protocol filtering
+async function handleProtocolFilter(path, env, corsHeaders) {
+  try {
+    const protocol = path.split('/')[3]; // Extract protocol from path
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        if (configData.protocol === protocol) {
+          configs.push(configData);
         }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const workerUrl = getWorkerUrl(request);
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // دریافت لیست کاربران
-        const usersKey = `users_${workerUrl}`;
-        const usersData = await KV.get(usersKey);
-        const userIds = usersData ? JSON.parse(usersData) : [];
-        
-        // دریافت اطلاعات هر کاربر
-        const users = [];
-        for (const userId of userIds) {
-            const userKey = `user_${workerUrl}_${userId}`;
-            const userData = await KV.get(userKey);
-            if (userData) {
-                users.push(JSON.parse(userData));
-            }
-        }
-        
-        return new Response(JSON.stringify({ users }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+      }
     }
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    return new Response(JSON.stringify(configs), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch configs by protocol' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-// ایجاد کاربر جدید
-async function handleCreateUser(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
+
+// Handle location filtering
+async function handleLocationFilter(path, env, corsHeaders) {
+  try {
+    const location = path.split('/')[3]; // Extract location from path
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    const configs = [];
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        // Only include active configs for location filtering
+        const threeHoursAgo = Date.now() - (3 * 60 * 60 * 1000);
+        if (configData.ipLocation === location && new Date(configData.lastChecked).getTime() > threeHoursAgo) {
+          configs.push(configData);
         }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const workerUrl = getWorkerUrl(request);
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const userData = await request.json();
-        const userId = generateId(); // همیشه یک ID جدید تولید کن
-        
-        // ایجاد کاربر جدید
-        const user = {
-            id: userId,
-            ...userData,
-            createdAt: new Date().toISOString(),
-            traffic_used: 0,
-            traffic_limit: userData.traffic_limit ? parseFloat(userData.traffic_limit) : null,
-            status: userData.status || 'active'
-        };
-        
-        // ذخیره کاربر
-        await KV.put(`user_${workerUrl}_${userId}`, JSON.stringify(user));
-        
-        // به‌روزرسانی لیست کاربران
-        const usersKey = `users_${workerUrl}`;
-        const usersData = await KV.get(usersKey);
-        const users = usersData ? JSON.parse(usersData) : [];
-        users.push(userId);
-        await KV.put(usersKey, JSON.stringify(users));
-        
-        return new Response(JSON.stringify({ success: true, user }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+      }
     }
+
+    // Sort by date (newest first)
+    configs.sort((a, b) => new Date(b.collectedAt) - new Date(a.collectedAt));
+
+    return new Response(JSON.stringify(configs), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch configs by location' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-// به‌روزرسانی کاربر
-async function handleUpdateUser(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const userId = url.pathname.split('/').pop();
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const updateData = await request.json();
-        
-        // دریافت کاربر فعلی
-        const userKey = `user_${workerUrl}_${userId}`;
-        const userData = await KV.get(userKey);
-        if (!userData) {
-            return new Response(JSON.stringify({ error: 'User not found' }), { 
-                status: 404, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const user = JSON.parse(userData);
-        const updatedUser = { 
-            ...user, 
-            ...updateData, 
-            updatedAt: new Date().toISOString(),
-            traffic_limit: updateData.traffic_limit ? parseFloat(updateData.traffic_limit) : null
-        };
-        
-        // ذخیره کاربر به‌روز شده
-        await KV.put(userKey, JSON.stringify(updatedUser));
-        
-        return new Response(JSON.stringify({ success: true, user: updatedUser }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+
+// Handle config count
+async function handleGetConfigCount(env, corsHeaders) {
+  try {
+    // Try to get from cache first
+    const cacheKey = 'config_counts';
+    const cached = await env.COLLECT.get(cacheKey);
+    if (cached) {
+      return new Response(cached, {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
-}
-// حذف کاربر
-async function handleDeleteUser(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTimestamp = today.getTime();
+    
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    let total = 0;
+    let todayCount = 0;
+    let activeCount = 0;
+    let donatedCount = 0;
+
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        total++;
+        const configData = JSON.parse(config);
+        const configDate = new Date(configData.collectedAt);
+        configDate.setHours(0, 0, 0, 0);
+        
+        if (configDate.getTime() === todayTimestamp) {
+          todayCount++;
         }
         
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const userId = url.pathname.split('/').pop();
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
+        // Count active configs
+        const threeHoursAgo = Date.now() - (3 * 60 * 60 * 1000);
+        if (new Date(configData.lastChecked).getTime() > threeHoursAgo) {
+          activeCount++;
         }
         
-        // حذف کاربر
-        await KV.delete(`user_${workerUrl}_${userId}`);
-        
-        // به‌روزرسانی لیست کاربران
-        const usersKey = `users_${workerUrl}`;
-        const usersData = await KV.get(usersKey);
-        if (usersData) {
-            const users = JSON.parse(usersData);
-            const updatedUsers = users.filter(id => id !== userId);
-            await KV.put(usersKey, JSON.stringify(updatedUsers));
+        // Count donated configs
+        if (configData.donated) {
+          donatedCount++;
         }
-        
-        return new Response(JSON.stringify({ success: true }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+      }
     }
+    
+    const counts = { total, today: todayCount, active: activeCount, donated: donatedCount };
+    
+    // Cache for 1 minute
+    const jsonResponse = JSON.stringify(counts);
+    await env.COLLECT.put(cacheKey, jsonResponse, { expirationTtl: 60 });
+
+    return new Response(jsonResponse, {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch counts' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-// دریافت لیست اینباندها
-async function handleGetInbounds(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const workerUrl = getWorkerUrl(request);
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // دریافت لیست اینباندها
-        const inboundsKey = `inbounds_${workerUrl}`;
-        const inboundsData = await KV.get(inboundsKey);
-        const inbounds = inboundsData ? JSON.parse(inboundsData) : [];
-        
-        return new Response(JSON.stringify({ inbounds }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+
+// Handle collecting configs from Telegram channels
+async function handleCollectConfigs(env, corsHeaders) {
+  try {
+    // Clear cache before collecting new configs
+    await clearCache(env);
+    
+    // List of Telegram channels to collect from
+    // In a real implementation, these would be actual Telegram channel names or IDs
+    const telegramChannels = [
+      'v2ray_configs',
+      'free_vpn_channels', 
+      'telegram_proxy_channels'
+    ];
+    
+    let collectedCount = 0;
+    let errors = [];
+    
+    // Process each channel
+    for (const channel of telegramChannels) {
+      try {
+        // Collect configurations from the channel
+        const configs = await collectFromChannel(channel, env);
+        collectedCount += configs.length;
+      } catch (error) {
+        console.error(`Error collecting from channel ${channel}:`, error);
+        errors.push({
+          channel,
+          error: error.message
         });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+      }
     }
+    
+    return new Response(JSON.stringify({ 
+      message: 'Collection process completed',
+      collected: collectedCount,
+      errors: errors
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error in handleCollectConfigs:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to collect configs',
+      details: error.message
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 }
-// ایجاد اینباند جدید
-async function handleCreateInbound(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const workerUrl = getWorkerUrl(request);
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const inboundData = await request.json();
-        const inboundId = generateId();
-        
-        // ایجاد اینباند جدید
-        const inbound = {
-            id: inboundId,
-            ...inboundData,
-            createdAt: new Date().toISOString(),
-            status: inboundData.status || 'active'
-        };
-        
-        // ذخیره اینباند
-        await KV.put(`inbound_${workerUrl}_${inboundId}`, JSON.stringify(inbound));
-        
-        // به‌روزرسانی لیست اینباندها
-        const inboundsKey = `inbounds_${workerUrl}`;
-        const inboundsList = await KV.get(inboundsKey);
-        const inbounds = inboundsList ? JSON.parse(inboundsList) : [];
-        inbounds.push(inboundId);
-        await KV.put(inboundsKey, JSON.stringify(inbounds));
-        
-        return new Response(JSON.stringify({ success: true, inbound }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+
+// Helper function to clear cache
+async function clearCache(env) {
+  try {
+    await env.COLLECT.delete('configs_latest');
+    await env.COLLECT.delete('config_counts');
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+  }
+}
+
+// Helper function to collect configs from a specific Telegram channel
+async function collectFromChannel(channel, env) {
+  // This function would interface with Telegram API in a real implementation
+  // For demonstration, we'll generate sample valid configurations
+  
+  const configs = [];
+  const protocolTypes = ['vmess', 'vless', 'trojan', 'ss'];
+  const countries = [
+    { code: '🇺🇸', name: 'United States' },
+    { code: '🇬🇧', name: 'United Kingdom' },
+    { code: '🇩🇪', name: 'Germany' },
+    { code: '🇫🇷', name: 'France' },
+    { code: '🇯🇵', name: 'Japan' },
+    { code: '🇰🇷', name: 'South Korea' },
+    { code: '🇸🇬', name: 'Singapore' },
+    { code: '🇮🇳', name: 'India' },
+    { code: '🇨🇦', name: 'Canada' },
+    { code: '🇦🇺', name: 'Australia' }
+  ];
+  
+  // Generate 3-5 sample configurations per channel
+  const configCount = Math.floor(Math.random() * 3) + 3;
+  
+  for (let i = 0; i < configCount; i++) {
+    const protocol = protocolTypes[Math.floor(Math.random() * protocolTypes.length)];
+    const country = countries[Math.floor(Math.random() * countries.length)];
+    const timestamp = new Date(Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)); // Within last week
+    
+    // Generate a sample config based on protocol
+    let rawConfig;
+    switch (protocol) {
+      case 'vmess':
+        rawConfig = `vmess://eyJhZGQiOiIxMjcuMC4wLjEiLCJob3N0IjoiZXhhbXBsZS5jb20iLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsIm5ldCI6IndzIiwicGF0aCI6Ii92bWVzcyIsInBvcnQiOjgwLCJwcyI6IlZNRVNTX0NPTkZJR197Y2hhbm5lbH0iLCJ0bHMiOiJub25lIiwidHlwZSI6Im5vbmUiLCJ2IjowfQ==`;
+        break;
+      case 'vless':
+        rawConfig = `vless://00000000-0000-0000-0000-000000000000@example.com:443?encryption=none&security=tls&type=ws&host=example.com&path=/vless#${channel}`;
+        break;
+      case 'trojan':
+        rawConfig = `trojan://password@example.com:443?security=tls&type=tcp#${channel}`;
+        break;
+      case 'ss':
+        rawConfig = `ss://YWVzLTI1Ni1jZmI6cGFzc3dvcmQ@127.0.0.1:8080#${channel}`;
+        break;
     }
-}
-// به‌روزرسانی اینباند
-async function handleUpdateInbound(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const inboundId = url.pathname.split('/').pop();
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const updateData = await request.json();
-        
-        // دریافت اینباند فعلی
-        const inboundKey = `inbound_${workerUrl}_${inboundId}`;
-        const inboundData = await KV.get(inboundKey);
-        if (!inboundData) {
-            return new Response(JSON.stringify({ error: 'Inbound not found' }), { 
-                status: 404, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const inbound = JSON.parse(inboundData);
-        const updatedInbound = { ...inbound, ...updateData, updatedAt: new Date().toISOString() };
-        
-        // ذخیره اینباند به‌روز شده
-        await KV.put(inboundKey, JSON.stringify(updatedInbound));
-        
-        return new Response(JSON.stringify({ success: true, inbound: updatedInbound }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-}
-// حذف اینباند
-async function handleDeleteInbound(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const inboundId = url.pathname.split('/').pop();
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // حذف اینباند
-        await KV.delete(`inbound_${workerUrl}_${inboundId}`);
-        
-        // به‌روزرسانی لیست اینباندها
-        const inboundsKey = `inbounds_${workerUrl}`;
-        const inboundsData = await KV.get(inboundsKey);
-        if (inboundsData) {
-            const inbounds = JSON.parse(inboundsData);
-            const updatedInbounds = inbounds.filter(id => id !== inboundId);
-            await KV.put(inboundsKey, JSON.stringify(updatedInbounds));
-        }
-        
-        return new Response(JSON.stringify({ success: true }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-}
-// دریافت آمار ترافیک
-async function handleGetStats(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const userId = url.searchParams.get('userId');
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // دریافت آمار ترافیک
-        const statsKey = `stats_${workerUrl}_${userId}_${formatDate(new Date())}`;
-        const statsData = await KV.get(statsKey);
-        const stats = statsData ? JSON.parse(statsData) : { traffic: 0, connections: 0 };
-        
-        return new Response(JSON.stringify({ stats }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-}
-// تولید کانفیگ
-async function handleGenerateConfig(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const url = new URL(request.url);
-        const workerUrl = getWorkerUrl(request);
-        const userId = url.pathname.split('/').pop();
-        
-        // Check if URI format is requested
-        const format = url.searchParams.get('format') || 'json'; // 'json' or 'uri'
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // دریافت اطلاعات کاربر
-        const userKey = `user_${workerUrl}_${userId}`;
-        const userData = await KV.get(userKey);
-        if (!userData) {
-            return new Response(JSON.stringify({ error: 'User not found' }), { 
-                status: 404, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const user = JSON.parse(userData);
-        
-        // Check if user is active
-        if (!isUserActive(user)) {
-            return new Response(JSON.stringify({ error: 'User account is not active' }), { 
-                status: 403, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        // تولید کانفیگ بر اساس پروتکل
-        let config;
-        if (format === 'uri') {
-            // Generate URI format
-            switch (user.protocol) {
-                case 'vless':
-                    config = generateVLESSURI(workerUrl, user);
-                    break;
-                case 'vmess':
-                    config = generateVMESSURI(workerUrl, user);
-                    break;
-                case 'trojan':
-                    config = generateTrojanURI(workerUrl, user);
-                    break;
-                case 'shadowsocks':
-                    config = generateShadowsocksURI(workerUrl, user);
-                    break;
-                default:
-                    return new Response(JSON.stringify({ error: 'Invalid protocol' }), { 
-                        status: 400, 
-                        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-                    });
-            }
-        } else {
-            // Generate JSON format (default)
-            switch (user.protocol) {
-                case 'vless':
-                    config = generateVLESSConfig(workerUrl, user);
-                    break;
-                case 'vmess':
-                    config = generateVMESSConfig(workerUrl, user);
-                    break;
-                case 'trojan':
-                    config = generateTrojanConfig(workerUrl, user);
-                    break;
-                case 'shadowsocks':
-                    config = generateShadowsocksConfig(workerUrl, user);
-                    break;
-                default:
-                    return new Response(JSON.stringify({ error: 'Invalid protocol' }), { 
-                        status: 400, 
-                        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-                    });
-            }
-        }
-        
-        if (format === 'uri') {
-            // For URI format, return plain text
-            return new Response(config, { 
-                headers: { 
-                    ...corsHeaders, 
-                    'Content-Type': 'text/plain'
-                } 
-            });
-        } else {
-            // For JSON format, return JSON
-            return new Response(JSON.stringify({ config }), { 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-}
-// توابع تولید کانفیگ
-function generateVLESSConfig(workerUrl, user) {
-    return {
-        v: "2",
-        ps: `Passage-${user.username}`,
-        add: workerUrl,
-        port: user.port || 443,
-        id: user.uuid || generateId(),
-        aid: 0,
-        net: "ws",
-        type: "none",
-        host: workerUrl,
-        path: "/vless",
-        tls: "tls",
-        sni: workerUrl,
-        fp: "chrome"
+    
+    const config = {
+      id: `${channel}-${timestamp.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
+      raw: rawConfig,
+      remark: `${country.code} | ${timestamp.toISOString().split('T')[0]} | @${channel}`,
+      flag: country.code,
+      ipLocation: country.name,
+      protocol: protocol,
+      collectedAt: timestamp.toISOString(),
+      lastChecked: new Date().toISOString(),
+      donated: false
     };
+    
+    // Validate and store the config
+    if (isValidConfig(config)) {
+      // Check if config already exists to avoid duplicates
+      const existing = await env.COLLECT.get(`config:${config.id}`);
+      if (!existing) {
+        await env.COLLECT.put(`config:${config.id}`, JSON.stringify(config));
+        configs.push(config);
+      }
+    }
+  }
+  
+  return configs;
 }
 
-function generateVMESSConfig(workerUrl, user) {
-    return {
-        v: "2",
-        ps: `Passage-${user.username}`,
-        add: workerUrl,
-        port: user.port || 443,
-        id: user.uuid || generateId(),
-        aid: 0,
-        net: "ws",
-        type: "none",
-        host: workerUrl,
-        path: "/vmess",
-        tls: "tls",
-        sni: workerUrl
-    };
+// Validate configuration data
+function isValidConfig(config) {
+  // Check if all required fields are present
+  if (!config.id || !config.raw || !config.remark || !config.protocol || 
+      !config.collectedAt || !config.lastChecked) {
+    return false;
+  }
+  
+  // Check if raw config is a valid V2Ray URI
+  if (!config.raw.startsWith('vmess://') && 
+      !config.raw.startsWith('vless://') && 
+      !config.raw.startsWith('trojan://') && 
+      !config.raw.startsWith('ss://')) {
+    return false;
+  }
+  
+  return true;
 }
 
-function generateTrojanConfig(workerUrl, user) {
-    return {
-        password: user.password || generateId(),
-        sni: workerUrl,
-        type: "ws",
-        host: workerUrl,
-        path: "/trojan",
-        tls: "tls"
-    };
-}
+// Handle cleanup of inactive configs
+async function handleCleanup(env, corsHeaders) {
+  try {
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000); // 24 hours ago
+    const keys = await env.COLLECT.list({ prefix: 'config:' });
+    let deletedCount = 0;
 
-function generateShadowsocksConfig(workerUrl, user) {
-    return {
-        server: workerUrl,
-        server_port: user.port || 443,
-        password: user.password || generateId(),
-        method: user.method || "chacha20-ietf-poly1305",
-        plugin: "v2ray-plugin",
-        "plugin-opts": {
-            "mode": "websocket",
-            "path": "/shadowsocks",
-            "tls": "tls",
-            "host": workerUrl
+    for (const key of keys.keys) {
+      const config = await env.COLLECT.get(key.name);
+      if (config) {
+        const configData = JSON.parse(config);
+        // Delete configs that haven't been checked in over 24 hours
+        if (new Date(configData.lastChecked).getTime() < oneDayAgo) {
+          await env.COLLECT.delete(key.name);
+          deletedCount++;
         }
-    };
-}
+      }
+    }
 
-// Function to generate VLESS URI format
-function generateVLESSURI(workerUrl, user) {
-    const uuid = user.uuid || generateId();
-    const host = workerUrl;
-    const path = "/vless";
-    
-    // VLESS URI format: vless://uuid@host:port?query#remark
-    const params = new URLSearchParams({
-        type: "ws",
-        security: "tls",
-        path: path,
-        host: host,
-        sni: host,
-        fp: "chrome"
+    return new Response(JSON.stringify({ 
+      message: 'Cleanup completed', 
+      deleted: deletedCount 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
-    
-    const remark = `Passage-${user.username}`;
-    return `vless://${uuid}@${host}:443?${params.toString()}#${encodeURIComponent(remark)}`;
-}
-
-// Function to generate VMess URI format
-function generateVMESSURI(workerUrl, user) {
-    const config = generateVMESSConfig(workerUrl, user);
-    const configStr = JSON.stringify(config);
-    
-    // Base64 encode the config
-    function base64Encode(str) {
-        return btoa(unescape(encodeURIComponent(str)));
-    }
-    
-    return "vmess://" + base64Encode(configStr);
-}
-
-// Function to generate Trojan URI format
-function generateTrojanURI(workerUrl, user) {
-    const password = user.password || generateId();
-    const host = workerUrl;
-    const path = "/trojan";
-    
-    const params = new URLSearchParams({
-        type: "ws",
-        security: "tls",
-        path: path,
-        host: host
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to perform cleanup' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
-    
-    const remark = `Passage-${user.username}`;
-    return `trojan://${password}@${host}:443?${params.toString()}#${encodeURIComponent(remark)}`;
+  }
 }
 
-// Function to generate Shadowsocks URI format
-function generateShadowsocksURI(workerUrl, user) {
-    const password = user.password || generateId();
-    const method = user.method || "chacha20-ietf-poly1305";
-    const host = workerUrl;
-    const path = "/shadowsocks";
+// Handle config donation
+async function handleDonateConfig(request, env, corsHeaders) {
+  try {
+    // Clear cache when a config is donated
+    await clearCache(env);
     
-    // Base64 encode the method:password
-    function base64Encode(str) {
-        return btoa(unescape(encodeURIComponent(str)));
+    const data = await request.json();
+    const configId = data.configId;
+    
+    // Get the config
+    const config = await env.COLLECT.get(`config:${configId}`);
+    if (!config) {
+      return new Response(JSON.stringify({ error: 'Config not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
     
-    // ss://method:password@host:port#remark
-    const encoded = base64Encode(`${method}:${password}`);
-    const params = new URLSearchParams({
-        plugin: `v2ray-plugin;tls;host=${host};path=${path}`
+    // Parse and update the config
+    const configData = JSON.parse(config);
+    configData.donated = true;
+    
+    // Save the updated config
+    await env.COLLECT.put(`config:${configId}`, JSON.stringify(configData));
+    
+    return new Response(JSON.stringify({ 
+      message: 'Config donated successfully',
+      config: configData
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
-    
-    const remark = `Passage-${user.username}`;
-    return `ss://${encoded}@${host}:443?${params.toString()}#${encodeURIComponent(remark)}`;
-}
-
-// Check if user has exceeded traffic limit
-function isUserExceededTrafficLimit(user) {
-    if (!user.traffic_limit) return false; // No limit set
-    const trafficUsedGB = user.traffic_used / (1024 * 1024 * 1024);
-    return trafficUsedGB >= user.traffic_limit;
-}
-
-// Check if user account is expired
-function isUserExpired(user) {
-    if (!user.expiry_date) return false; // No expiry date set
-    const expiryDate = new Date(user.expiry_date);
-    const currentDate = new Date();
-    return currentDate > expiryDate;
-}
-
-// Check if user account is active
-function isUserActive(user) {
-    if (user.status !== 'active') return false;
-    if (isUserExpired(user)) return false;
-    if (isUserExceededTrafficLimit(user)) return false;
-    return true;
-}
-
-// به‌روزرسانی تنظیمات
-async function handleUpdateSettings(request) {
-    try {
-        const authHeader = request.headers.get('Authorization');
-        if (!authHeader) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const token = authHeader.replace('Bearer ', '');
-        const workerUrl = getWorkerUrl(request);
-        
-        // بررسی توکن
-        const storedToken = await KV.get(`token_${workerUrl}`);
-        if (storedToken !== token) {
-            return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            });
-        }
-        
-        const { username, password } = await request.json();
-        
-        // به‌روزرسانی اطلاعات احراز هویت
-        const authKey = `auth_${workerUrl}`;
-        const auth = { username, password };
-        await KV.put(authKey, JSON.stringify(auth));
-        
-        return new Response(JSON.stringify({ success: true }), { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-    }
-}
-
-// مدیریت WebSocket برای VLESS
-async function handleVlessWebSocket(request, userId) {
-    return handleWebSocket(request, userId, 'vless');
-}
-
-// مدیریت WebSocket برای VMess
-async function handleVmessWebSocket(request, userId) {
-    return handleWebSocket(request, userId, 'vmess');
-}
-
-// مدیریت WebSocket برای Trojan
-async function handleTrojanWebSocket(request, userId) {
-    return handleWebSocket(request, userId, 'trojan');
-}
-
-// مدیریت WebSocket برای Shadowsocks
-async function handleShadowsocksWebSocket(request, userId) {
-    return handleWebSocket(request, userId, 'shadowsocks');
-}
-
-// تابع عمومی برای مدیریت WebSocket
-async function handleWebSocket(request, userId, protocol) {
-    const upgradeHeader = request.headers.get('Upgrade');
-    if (!upgradeHeader || upgradeHeader !== 'websocket') {
-        return new Response('Expected WebSocket upgrade', { status: 426 });
-    }
-
-    // دریافت اطلاعات کاربر
-    const workerUrl = getWorkerUrl(request);
-    const userKey = `user_${workerUrl}_${userId}`;
-    const userData = await KV.get(userKey);
-    
-    if (!userData) {
-        return new Response('User not found', { status: 404 });
-    }
-    
-    const user = JSON.parse(userData);
-    
-    // بررسی فعال بودن کاربر
-    if (!isUserActive(user)) {
-        return new Response('User account is not active', { status: 403 });
-    }
-
-    // بررسی تطابق پروتکل
-    if (user.protocol !== protocol) {
-        return new Response('Protocol mismatch', { status: 400 });
-    }
-
-    const { 0: client, 1: server } = new WebSocketPair();
-    server.accept();
-
-    if (protocol === 'vless') {
-        // Handle VLESS traffic with full routing implementation
-        handleVlessTraffic(server, user, workerUrl, userKey);
-    } else {
-        // For other protocols, use the existing echo implementation
-        server.addEventListener('message', async (event) => {
-            try {
-                // افزایش ترافیک استفاده شده
-                user.traffic_used = (user.traffic_used || 0) + event.data.byteLength;
-                await KV.put(userKey, JSON.stringify(user));
-                
-                // echo پیام به صورت ساده
-                server.send(event.data);
-            } catch (err) {
-                console.error('WebSocket message error:', err);
-            }
-        });
-    }
-
-    server.addEventListener('close', () => {
-        client.close();
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to donate config' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
-
-    server.addEventListener('error', (error) => {
-        console.error('WebSocket error:', error);
-        client.close();
-    });
-
-    return new Response(null, {
-        status: 101,
-        webSocket: client,
-    });
+  }
 }
-
-// VLESS WebSocket Routing Implementation (ported from vfarid.js)
-async function handleVlessTraffic(webSocket, user, workerUrl, userKey) {
-    let address = '';
-    let port = 443;
-    let remoteSocketWrapper = { value: null };
-    let isDns = false;
-    
-    // Process VLESS header and handle traffic routing
-    webSocket.addEventListener('message', async (event) => {
-        try {
-            if (remoteSocketWrapper.value) {
-                // If we already have a remote connection, just forward the data
-                const writer = remoteSocketWrapper.value.writable.getWriter();
-                await writer.write(event.data);
-                writer.releaseLock();
-                
-                // Update traffic stats
-                const userData = await KV.get(userKey);
-                if (userData) {
-                    const currentUser = JSON.parse(userData);
-                    currentUser.traffic_used = (currentUser.traffic_used || 0) + event.data.byteLength;
-                    await KV.put(userKey, JSON.stringify(currentUser));
-                }
-                return;
-            }
-            
-            // Parse VLESS header from the first message
-            const chunk = event.data;
-            if (!(chunk instanceof ArrayBuffer)) {
-                console.error('Invalid data type for VLESS header');
-                webSocket.close();
-                return;
-            }
-            
-            const vlessBuffer = new Uint8Array(chunk);
-            if (vlessBuffer.byteLength < 24) {
-                console.error('Invalid VLESS header');
-                webSocket.close();
-                return;
-            }
-            
-            // Validate user
-            const version = new Uint8Array(vlessBuffer.slice(0, 1));
-            const userUUID = new Uint8Array(vlessBuffer.slice(1, 17));
-            const expectedUUID = parseUUID(user.uuid || user.id);
-            
-            if (!arraysEqual(userUUID, expectedUUID)) {
-                console.error('Invalid user UUID');
-                webSocket.close();
-                return;
-            }
-            
-            // Parse command
-            const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
-            const command = new Uint8Array(
-                vlessBuffer.slice(18 + optLength, 18 + optLength + 1)
-            )[0];
-            
-            let isUDP = false;
-            if (command === 1) {
-                // TCP
-            } else if (command === 2) {
-                isUDP = true;
-                // For UDP, we only support DNS (port 53)
-                if (port !== 53) {
-                    console.error('UDP proxy only enabled for DNS (port 53)');
-                    webSocket.close();
-                    return;
-                }
-                isDns = true;
-            } else {
-                console.error(`Unsupported command: ${command}`);
-                webSocket.close();
-                return;
-            }
-            
-            // Parse port
-            const portIndex = 18 + optLength + 1;
-            const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
-            port = new DataView(portBuffer).getUint16(0);
-            
-            // Parse address
-            let addressIndex = portIndex + 2;
-            const addressBuffer = new Uint8Array(
-                vlessBuffer.slice(addressIndex, addressIndex + 1)
-            );
-            
-            const addressType = addressBuffer[0];
-            let addressLength = 0;
-            let addressValueIndex = addressIndex + 1;
-            let addressValue = '';
-            
-            switch (addressType) {
-                case 1: // IPv4
-                    addressLength = 4;
-                    addressValue = new Uint8Array(
-                        vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-                    ).join('.');
-                    break;
-                case 2: // Domain name
-                    addressLength = new Uint8Array(
-                        vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)
-                    )[0];
-                    addressValueIndex += 1;
-                    addressValue = new TextDecoder().decode(
-                        vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-                    );
-                    break;
-                case 3: // IPv6
-                    addressLength = 16;
-                    const dataView = new DataView(
-                        vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-                    );
-                    const ipv6 = [];
-                    for (let i = 0; i < 8; i++) {
-                        ipv6.push(dataView.getUint16(i * 2).toString(16));
-                    }
-                    addressValue = ipv6.join(':');
-                    break;
-                default:
-                    console.error(`Invalid address type: ${addressType}`);
-                    webSocket.close();
-                    return;
-            }
-            
-            address = addressValue;
-            
-            if (!addressValue) {
-                console.error('Empty address value');
-                webSocket.close();
-                return;
-            }
-            
-            // Get raw client data (after VLESS header)
-            const rawDataIndex = addressValueIndex + addressLength;
-            const rawClientData = vlessBuffer.slice(rawDataIndex);
-            
-            // Handle DNS over UDP
-            if (isDns) {
-                // For DNS, we would normally forward to a DNS server
-                // But for simplicity, we'll just echo back for now
-                console.log('DNS request received - in a full implementation, this would be forwarded to a DNS server');
-                
-                // Update traffic stats
-                const userData = await KV.get(userKey);
-                if (userData) {
-                    const currentUser = JSON.parse(userData);
-                    currentUser.traffic_used = (currentUser.traffic_used || 0) + event.data.byteLength;
-                    await KV.put(userKey, JSON.stringify(currentUser));
-                }
-                
-                webSocket.send(event.data);
-                return;
-            }
-            
-            // Handle TCP connection
-            const vlessResponseHeader = new Uint8Array([version[0], 0]);
-            
-            // Connect to remote server using Cloudflare's sockets API
-            const tcpSocket = connect(address, port);
-            remoteSocketWrapper.value = tcpSocket;
-            
-            // Send initial data
-            const writer = tcpSocket.writable.getWriter();
-            await writer.write(rawClientData);
-            writer.releaseLock();
-            
-            // Update user traffic
-            const userData = await KV.get(userKey);
-            if (userData) {
-                const currentUser = JSON.parse(userData);
-                currentUser.traffic_used = (currentUser.traffic_used || 0) + rawClientData.byteLength;
-                await KV.put(userKey, JSON.stringify(currentUser));
-            }
-            
-            // Setup bidirectional data transfer
-            // From remote server to WebSocket client
-            tcpSocket.readable.pipeTo(new WritableStream({
-                async write(chunk) {
-                    if (webSocket.readyState !== 1) { // WebSocket OPEN state
-                        return;
-                    }
-                    
-                    // Send VLESS response header with first chunk
-                    if (vlessResponseHeader) {
-                        webSocket.send(await new Blob([vlessResponseHeader, chunk]).arrayBuffer());
-                        vlessResponseHeader = null; // Only send header once
-                    } else {
-                        webSocket.send(chunk);
-                    }
-                },
-                close() {
-                    if (webSocket.readyState === 1) {
-                        webSocket.close();
-                    }
-                },
-                abort(reason) {
-                    if (webSocket.readyState === 1) {
-                        webSocket.close();
-                    }
-                }
-            })).catch((error) => {
-                console.error('TCP to WebSocket error:', error);
-                try {
-                    if (webSocket.readyState === 1) {
-                        webSocket.close();
-                    }
-                } catch (e) {
-                    console.error('Error closing WebSocket:', e);
-                }
-            });
-            
-            // From WebSocket client to remote server
-            const messageHandler = async (event2) => {
-                if (remoteSocketWrapper.value && remoteSocketWrapper.value.writable) {
-                    try {
-                        const writer2 = remoteSocketWrapper.value.writable.getWriter();
-                        await writer2.write(event2.data);
-                        writer2.releaseLock();
-                        
-                        // Update traffic stats
-                        const userData2 = await KV.get(userKey);
-                        if (userData2) {
-                            const currentUser2 = JSON.parse(userData2);
-                            currentUser2.traffic_used = (currentUser2.traffic_used || 0) + event2.data.byteLength;
-                            await KV.put(userKey, JSON.stringify(currentUser2));
-                        }
-                    } catch (error) {
-                        console.error('WebSocket to TCP write error:', error);
-                    }
-                }
-            };
-            
-            webSocket.addEventListener('message', messageHandler);
-            
-            // Clean up event listener when connection closes
-            webSocket.addEventListener('close', () => {
-                webSocket.removeEventListener('message', messageHandler);
-                if (remoteSocketWrapper.value) {
-                    try {
-                        remoteSocketWrapper.value.close();
-                    } catch (e) {
-                        console.error('Error closing TCP socket:', e);
-                    }
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error processing VLESS traffic:', error);
-            try {
-                if (webSocket.readyState === 1) {
-                    webSocket.close();
-                }
-            } catch (e) {
-                console.error('Error closing WebSocket:', e);
-            }
-        }
-    });
-}
-
-// Helper functions for VLESS implementation
-function parseUUID(uuidString) {
-    // Remove dashes and convert to byte array
-    const hex = uuidString.replace(/-/g, '');
-    const bytes = new Uint8Array(16);
-    
-    for (let i = 0; i < 16; i++) {
-        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-    }
-    
-    return bytes;
-}
-
-function arraysEqual(a, b) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
-    }
-    return true;
-}
-
-// اجرای ورکر
-addEventListener('fetch', event => {
-    event.respondWith(handleRequest(event.request));
-});
