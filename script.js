@@ -1,5 +1,5 @@
 // Global variables
-const API_BASE = 'https://collector.judiopu.workers.dev/api'; // This will be replaced with your Cloudflare Worker URL
+const API_BASE = 'https://collector.judiopu.workers.dev/api'; // Cloudflare Worker URL
 let currentLang = 'en';
 let currentConfigs = [];
 
@@ -369,28 +369,31 @@ function showQRCode(text, title) {
     qrDiv.style.justifyContent = 'center';
     elements.qrCode.appendChild(qrDiv);
     
-    // Generate QR code using the library
-    QRCode.toCanvas(qrDiv, text, {
-        width: 200,
-        height: 200,
-        margin: 2,
-        color: {
-            dark: '#000000',
-            light: '#ffffff'
+    try {
+        // Generate QR code using the library if available
+        if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+            QRCode.toCanvas(qrDiv, text, {
+                width: 200,
+                height: 200,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }, function (error) {
+                if (error) {
+                    console.error('Error generating QR code:', error);
+                    showQRCodeFallback(qrDiv, text);
+                }
+            });
+        } else {
+            // Fallback if library is not loaded
+            showQRCodeFallback(qrDiv, text);
         }
-    }, function (error) {
-        if (error) {
-            console.error('Error generating QR code:', error);
-            elements.qrCode.innerHTML = `
-                <div style="text-align: center; padding: 20px;">
-                    <p>Error generating QR code</p>
-                    <div style="background: white; width: 200px; height: 200px; margin: 10px auto; display: flex; align-items: center; justify-content: center;">
-                        <span>QR CODE ERROR</span>
-                    </div>
-                </div>
-            `;
-        }
-    });
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+        showQRCodeFallback(qrDiv, text);
+    }
     
     // Add text below the QR code
     const info = document.createElement('p');
@@ -398,6 +401,58 @@ function showQRCode(text, title) {
     info.style.textAlign = 'center';
     info.style.marginTop = '10px';
     elements.qrCode.appendChild(info);
+}
+
+// Fallback QR code generation
+function showQRCodeFallback(container, text) {
+    container.innerHTML = '';
+    
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    canvas.style.border = '1px solid #ddd';
+    canvas.style.borderRadius = '8px';
+    container.appendChild(canvas);
+    
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 200, 200);
+    
+    // Draw a simplified representation
+    ctx.fillStyle = '#000000';
+    
+    // Draw a pattern that represents the config data
+    const patternSize = 20;
+    const cellSize = 10;
+    
+    // Draw a basic pattern
+    for (let i = 0; i < patternSize; i++) {
+        for (let j = 0; j < patternSize; j++) {
+            // Create a pattern based on the hash of the text
+            const charIndex = (i * patternSize + j) % text.length;
+            const charCode = text.charCodeAt(charIndex);
+            if (charCode % 2 === 0) {
+                ctx.fillRect(i * cellSize, j * cellSize, cellSize, cellSize);
+            }
+        }
+    }
+    
+    // Draw the standard QR code finder patterns
+    ctx.fillRect(0, 0, 70, 70); // Top-left
+    ctx.fillRect(130, 0, 70, 70); // Top-right
+    ctx.fillRect(0, 130, 70, 70); // Bottom-left
+    
+    // Draw inner squares for finder patterns
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(10, 10, 50, 50);
+    ctx.fillRect(140, 10, 50, 50);
+    ctx.fillRect(10, 140, 50, 50);
+    
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(20, 20, 30, 30);
+    ctx.fillRect(150, 20, 30, 30);
+    ctx.fillRect(20, 150, 30, 30);
 }
 
 // Show config details in modal

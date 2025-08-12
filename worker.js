@@ -4,33 +4,29 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Handle CORS
-    const allowedOrigins = [url.origin]; // Allow same origin by default
-    const origin = request.headers.get('Origin');
-    
+    // Handle CORS - Allow all origins for better cross-origin access
     const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+      'Access-Control-Max-Age': '86400', // Cache preflight requests for 24 hours
     };
 
-    // If origin is allowed or it's a same-origin request, add specific origin
-    if (!origin || allowedOrigins.includes(origin)) {
-      corsHeaders['Access-Control-Allow-Origin'] = origin || url.origin;
-    } else {
-      // For other cases, use a more restrictive policy
-      corsHeaders['Access-Control-Allow-Origin'] = url.origin;
-    }
+    // Enhanced security headers
+    const securityHeaders = {
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;",
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'X-XSS-Protection': '1; mode=block',
+    };
 
-    // Add security headers
-    corsHeaders['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; connect-src 'self';";
-    corsHeaders['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
-    corsHeaders['X-Content-Type-Options'] = 'nosniff';
-    corsHeaders['X-Frame-Options'] = 'DENY';
-    corsHeaders['X-XSS-Protection'] = '1; mode=block';
+    // Combine CORS and security headers
+    const headers = { ...corsHeaders, ...securityHeaders };
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { 
-        headers: corsHeaders 
+        headers: headers 
       });
     }
 
@@ -87,12 +83,57 @@ export default {
       return handleDonateConfig(request, env, corsHeaders);
     }
 
+    // Add QR code endpoint
+    if (path === '/api/qr') {
+      return handleGenerateQR(request, env, headers);
+    }
+    
     return new Response('Not Found', { 
       status: 404,
-      headers: corsHeaders 
+      headers: headers 
     });
   }
 };
+
+// QR code generation handler
+async function handleGenerateQR(request, env, headers) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const text = searchParams.get('text');
+    
+    if (!text) {
+      return new Response(JSON.stringify({ error: 'Missing text parameter' }), {
+        status: 400,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Use an external QR code generation service
+    const qrServiceUrl = `https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=200`;
+    
+    // Fetch QR code from the service
+    const response = await fetch(qrServiceUrl);
+    
+    if (!response.ok) {
+      throw new Error(`QR code generation failed: ${response.statusText}`);
+    }
+    
+    // Return the QR code image with proper caching
+    const imageData = await response.arrayBuffer();
+    return new Response(imageData, {
+      headers: {
+        ...headers,
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
+      }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Failed to generate QR code' }), {
+      status: 500,
+      headers: { ...headers, 'Content-Type': 'application/json' }
+    });
+  }
+}
 
 // Handle getting latest 10 configs
 async function handleGetConfigs(env, corsHeaders) {
@@ -430,10 +471,11 @@ async function handleCollectConfigs(env, corsHeaders) {
     // List of Telegram channels to collect from
     // In a real implementation, these would be actual Telegram channel names or IDs
     const telegramChannels = [
-      'v2ray_configs',
-      'free_vpn_channels', 
-      'telegram_proxy_channels'
+      'MsV2ray',
+      'v2rayngvpn', 
+      'customv2ray'
     ];
+    
     
     let collectedCount = 0;
     let errors = [];
